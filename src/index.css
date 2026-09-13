@@ -1,0 +1,412 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Cairo", ui-sans-serif, system-ui, sans-serif;
+
+  --color-bg-base: #F0F4F8;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-surface-2: #F7FAFC;
+  --color-bg-sidebar: #1A2332;
+  --color-bg-sidebar-hover: #243447;
+
+  --color-primary-base: #2563EB;
+  --color-primary-light: #EFF6FF;
+  --color-primary-dark: #1D4ED8;
+
+  --color-accent-base: #0D9488;
+  --color-accent-light: #F0FDFA;
+
+  --color-success-base: #16A34A;
+  --color-success-bg: #F0FDF4;
+  
+  --color-warning-base: #D97706;
+  --color-warning-bg: #FFFBEB;
+  
+  --color-danger-base: #DC2626;
+  --color-danger-bg: #FEF2F2;
+  
+  --color-info-base: #0EA5E9;
+  --color-info-bg: #F0F9FF;
+
+  --color-text-primary: #1E293B;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94A3B8;
+  --color-text-on-dark: #F1F5F9;
+
+  --color-border-base: #E2E8F0;
+  --color-border-focus: #2563EB;
+}
+
+@layer base {
+  html, body {
+    background-color: var(--color-bg-base);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    transition: background-color 0.2s ease, color 0.2s ease;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+    -webkit-overflow-scrolling: touch; /* Smooth iOS scrolling */
+  }
+
+  /* Completely hide scrollbars for Chrome, Safari, Opera and all elements */
+  * {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+
+  *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+  }
+}
+
+/* Utility for hiding scrollbar explicitly */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* ==========================================================================
+   Dark Mode Comprehensive Overrides
+   ========================================================================== */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #0B132B;
+  color: #F1F5F9;
+}
+
+html.dark .bg-white {
+  background-color: #141E33;
+}
+
+html.dark .bg-\[\#F8FAFC\] {
+  background-color: #1B2844;
+}
+
+html.dark .bg-\[\#F0F4F8\] {
+  background-color: #0B132B;
+}
+
+html.dark .bg-\[\#F1F5F9\] {
+  background-color: #1E2D4A;
+}
+
+html.dark .bg-\[\#F7FAFC\] {
+  background-color: #17233B;
+}
+
+html.dark .bg-\[\#EFF6FF\] {
+  background-color: #1E2D4A;
+}
+
+html.dark .bg-\[\#EEF2FF\] {
+  background-color: #1B2544;
+}
+
+html.dark .border-\[\#E0E7FF\] {
+  border-color: #374774;
+}
+
+html.dark .bg-\[\#F0FDF4\] {
+  background-color: rgba(6, 78, 59, 0.25);
+}
+
+html.dark .bg-\[\#ECFDF5\] {
+  background-color: rgba(6, 78, 59, 0.35);
+}
+
+html.dark tr.hover\:bg-\[\#F0FDF4\]:hover,
+html.dark div.hover\:bg-\[\#F0FDF4\]:hover {
+  background-color: rgba(6, 78, 59, 0.35);
+}
+
+html.dark .border-\[\#BBF7D0\] {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+html.dark .bg-\[\#FEF2F2\] {
+  background-color: rgba(127, 29, 29, 0.25);
+}
+
+html.dark .border-\[\#FECACA\] {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+html.dark .bg-\[\#FEF3C7\] {
+  background-color: rgba(120, 53, 15, 0.25);
+}
+
+html.dark .border-\[\#FDE68A\] {
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+/* Common Tailwind Light Badges & Tints in Dark Mode */
+html.dark .bg-red-50 {
+  background-color: rgba(127, 29, 29, 0.25);
+}
+
+html.dark .bg-red-100 {
+  background-color: rgba(127, 29, 29, 0.45);
+}
+
+html.dark .text-red-800,
+html.dark .text-red-700 {
+  color: #FCA5A5;
+}
+
+html.dark .border-red-200 {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+html.dark .bg-emerald-50,
+html.dark .bg-green-50 {
+  background-color: rgba(6, 78, 59, 0.25);
+}
+
+html.dark .bg-emerald-100,
+html.dark .bg-green-100 {
+  background-color: rgba(6, 78, 59, 0.45);
+}
+
+html.dark .text-emerald-800,
+html.dark .text-emerald-700,
+html.dark .text-green-800 {
+  color: #6EE7B7;
+}
+
+html.dark .border-emerald-200,
+html.dark .border-green-200 {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+html.dark .bg-amber-50,
+html.dark .bg-yellow-50 {
+  background-color: rgba(120, 53, 15, 0.25);
+}
+
+html.dark .bg-amber-100,
+html.dark .bg-yellow-100 {
+  background-color: rgba(120, 53, 15, 0.45);
+}
+
+html.dark .text-amber-800,
+html.dark .text-amber-700,
+html.dark .text-yellow-800 {
+  color: #FCD34D;
+}
+
+html.dark .border-amber-200 {
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+html.dark .bg-blue-50 {
+  background-color: rgba(30, 58, 138, 0.25);
+}
+
+html.dark .border-blue-200 {
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+html.dark .bg-slate-50,
+html.dark .bg-slate-100 {
+  background-color: #1E2D4A;
+}
+
+html.dark .text-slate-700,
+html.dark .text-slate-800,
+html.dark .text-slate-900,
+html.dark .text-gray-700,
+html.dark .text-gray-800,
+html.dark .text-gray-900 {
+  color: #F1F5F9;
+}
+
+html.dark .text-slate-600,
+html.dark .text-slate-500,
+html.dark .text-gray-600,
+html.dark .text-gray-500 {
+  color: #94A3B8;
+}
+
+html.dark .border-\[\#E2E8F0\] {
+  border-color: #263552;
+}
+
+html.dark .border-\[\#F1F5F9\] {
+  border-color: #263552;
+}
+
+html.dark .border-\[\#CBD5E1\] {
+  border-color: #334668;
+}
+
+html.dark .border-slate-200 {
+  border-color: #263552;
+}
+
+html.dark .divide-\[\#E2E8F0\] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #263552;
+}
+
+html.dark .divide-\[\#F1F5F9\] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #263552;
+}
+
+html.dark .text-\[\#1E293B\] {
+  color: #F8FAFC;
+}
+
+html.dark .text-\[\#334155\] {
+  color: #F1F5F9;
+}
+
+html.dark .text-\[\#475569\] {
+  color: #E2E8F0;
+}
+
+html.dark .text-\[\#64748B\] {
+  color: #CBD5E1;
+}
+
+html.dark .text-\[\#94A3B8\] {
+  color: #94A3B8;
+}
+
+html.dark .text-\[\#4F46E5\] {
+  color: #A5B4FC;
+}
+
+html.dark .text-\[\#16A34A\] {
+  color: #4ADE80;
+}
+
+html.dark .text-\[\#DC2626\] {
+  color: #F87171;
+}
+
+html.dark .text-\[\#D97706\] {
+  color: #FBBF24;
+}
+
+html.dark tr.hover\:bg-\[\#F8FAFC\]:hover {
+  background-color: #1E2D4A;
+}
+
+html.dark input, 
+html.dark select, 
+html.dark textarea {
+  background-color: #141E33;
+  border-color: #263552;
+  color: #F8FAFC;
+}
+
+html.dark input::placeholder, 
+html.dark textarea::placeholder {
+  color: #94A3B8;
+}
+
+/* Isolate physical barcode label sticker preview from Dark Mode inversion */
+.barcode-sticker-card {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+.barcode-sticker-card * {
+  color: #000000 !important;
+}
+
+/* Ensure invoice card paper preview remains clean white */
+#invoice-card {
+  background-color: #ffffff !important;
+  color: #1E293B !important;
+}
+html.dark #invoice-card {
+  background-color: #ffffff !important;
+  color: #1E293B !important;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Completely remove non-printable elements from document print layout */
+  .print\:hidden,
+  nav,
+  header,
+  aside,
+  button,
+  footer,
+  .no-print,
+  #html2canvas-staging-wrapper {
+    display: none !important;
+  }
+
+  .print\:backdrop-blur-none {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Ensure printable wrappers render cleanly at 100% width and auto height */
+  #invoice-print-area,
+  #hidden-share-invoice-print,
+  #purchase-invoice-printable-area,
+  #statement-printable-area,
+  #supplier-statement-printable-area,
+  .printable-area {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    box-shadow: none !important;
+    border: none !important;
+    background-color: #ffffff !important;
+    display: block !important;
+    overflow: visible !important;
+    float: none !important;
+    box-sizing: border-box !important;
+  }
+
+  #invoice-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: auto !important;
+    height: auto !important;
+    margin: 0 auto !important;
+    padding: 8mm 10mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    box-sizing: border-box !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix: Doctor Tools1",
+  "description": "",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

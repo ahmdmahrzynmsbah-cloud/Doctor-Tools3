@@ -1,0 +1,206 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net Rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Core helper primitives ---
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Entity Validation Helpers ---
+    function isValidBusinessProfile(data) {
+      return data.keys().hasAll(['ownerId', 'name', 'phone', 'address', 'createdAt', 'updatedAt'])
+        && data.keys().size() <= 7 // allow optional logo
+        && data.ownerId == 'main_store'
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.phone is string && data.phone.size() > 0 && data.phone.size() <= 50
+        && data.address is string && data.address.size() > 0 && data.address.size() <= 200
+        && (data.get('logo', null) == null || (data.logo is string && data.logo.size() <= 10000))
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    function isValidCategory(data) {
+      return data.keys().hasAll(['ownerId', 'name', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 4
+        && data.ownerId == 'main_store'
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 50
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    function isValidInventoryItem(data) {
+      return data.keys().hasAll(['ownerId', 'code', 'name', 'brand', 'compatibleCars', 'category', 'storageLocation', 'quantity', 'purchasePrice', 'sellPrice', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 12
+        && data.ownerId == 'main_store'
+        && data.code is string && data.code.size() > 0 && data.code.size() <= 100
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && data.brand is string && data.brand.size() <= 100
+        && data.compatibleCars is string && data.compatibleCars.size() <= 200
+        && data.category is string && data.category.size() > 0 && data.category.size() <= 100
+        && data.storageLocation is string && data.storageLocation.size() <= 100
+        && (data.quantity is int || data.quantity is float)
+        && (data.purchasePrice is int || data.purchasePrice is float)
+        && (data.sellPrice is int || data.sellPrice is float)
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['ownerId', 'serialNumber', 'name', 'phone', 'balance', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 7
+        && data.ownerId == 'main_store'
+        && data.serialNumber is string && data.serialNumber.size() > 0 && data.serialNumber.size() <= 50
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.phone is string && data.phone.size() <= 50
+        && (data.balance is int || data.balance is float)
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    function isValidSupplier(data) {
+      return data.keys().hasAll(['ownerId', 'name', 'phone', 'balance', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 6
+        && data.ownerId == 'main_store'
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.phone is string && data.phone.size() <= 50
+        && (data.balance is int || data.balance is float)
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    function isValidInvoice(data) {
+      return data.keys().hasAll(['ownerId', 'invoiceNumber', 'date', 'customerId', 'items', 'total', 'paid', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 9
+        && data.ownerId == 'main_store'
+        && data.invoiceNumber is string && data.invoiceNumber.size() > 0 && data.invoiceNumber.size() <= 50
+        && data.date is string && data.date.size() > 0 && data.date.size() <= 50
+        && data.customerId is string && data.customerId.size() > 0 && data.customerId.size() <= 128
+        && data.items is list
+        && (data.total is int || data.total is float)
+        && (data.paid is int || data.paid is float)
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    function isValidPurchase(data) {
+      return data.keys().hasAll(['ownerId', 'date', 'supplierId', 'items', 'total', 'paid', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 8
+        && data.ownerId == 'main_store'
+        && data.date is string && data.date.size() > 0 && data.date.size() <= 50
+        && data.supplierId is string && data.supplierId.size() > 0 && data.supplierId.size() <= 128
+        && data.items is list
+        && (data.total is int || data.total is float)
+        && (data.paid is int || data.paid is float)
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['ownerId', 'message', 'date', 'read', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 6
+        && data.ownerId == 'main_store'
+        && data.message is string && data.message.size() > 0 && data.message.size() <= 500
+        && data.date is string && data.date.size() > 0 && data.date.size() <= 50
+        && data.read is bool
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    // --- Collections Matching ---
+    match /users/{userId} {
+      // Profile Subcollection
+      match /profile/businessProfile {
+        allow read: if userId == 'main_store';
+        allow create: if userId == 'main_store' && isValidBusinessProfile(incoming());
+        allow update: if userId == 'main_store' && isValidBusinessProfile(incoming())
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt;
+      }
+      
+      // Categories Subcollection
+      match /categories/{categoryId} {
+        allow read: if userId == 'main_store';
+        allow create: if userId == 'main_store' && isValidId(categoryId) && isValidCategory(incoming());
+        allow update: if userId == 'main_store' && isValidId(categoryId) && isValidCategory(incoming())
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt;
+        allow delete: if userId == 'main_store' && isValidId(categoryId);
+      }
+
+      // Inventory Subcollection
+      match /inventory/{itemId} {
+        allow read: if userId == 'main_store';
+        allow create: if userId == 'main_store' && isValidId(itemId) && isValidInventoryItem(incoming());
+        allow update: if userId == 'main_store' && isValidId(itemId) && isValidInventoryItem(incoming())
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt;
+        allow delete: if userId == 'main_store' && isValidId(itemId);
+      }
+
+      // Customers Subcollection
+      match /customers/{customerId} {
+        allow read: if userId == 'main_store';
+        allow create: if userId == 'main_store' && isValidId(customerId) && isValidCustomer(incoming());
+        allow update: if userId == 'main_store' && isValidId(customerId) && isValidCustomer(incoming())
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt;
+        allow delete: if userId == 'main_store' && isValidId(customerId);
+      }
+
+      // Suppliers Subcollection
+      match /suppliers/{supplierId} {
+        allow read: if userId == 'main_store';
+        allow create: if userId == 'main_store' && isValidId(supplierId) && isValidSupplier(incoming());
+        allow update: if userId == 'main_store' && isValidId(supplierId) && isValidSupplier(incoming())
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt;
+        allow delete: if userId == 'main_store' && isValidId(supplierId);
+      }
+
+      // Invoices Subcollection
+      match /invoices/{invoiceId} {
+        allow read: if userId == 'main_store';
+        allow create: if userId == 'main_store' && isValidId(invoiceId) && isValidInvoice(incoming());
+        allow update: if userId == 'main_store' && isValidId(invoiceId) && isValidInvoice(incoming())
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt;
+        allow delete: if userId == 'main_store' && isValidId(invoiceId);
+      }
+
+      // Purchases Subcollection
+      match /purchases/{purchaseId} {
+        allow read: if userId == 'main_store';
+        allow create: if userId == 'main_store' && isValidId(purchaseId) && isValidPurchase(incoming());
+        allow update: if userId == 'main_store' && isValidId(purchaseId) && isValidPurchase(incoming())
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt;
+        allow delete: if userId == 'main_store' && isValidId(purchaseId);
+      }
+
+      // Notifications Subcollection
+      match /notifications/{notificationId} {
+        allow read: if userId == 'main_store';
+        allow create: if userId == 'main_store' && isValidId(notificationId) && isValidNotification(incoming());
+        allow update: if userId == 'main_store' && isValidId(notificationId) && isValidNotification(incoming())
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt;
+        allow delete: if userId == 'main_store' && isValidId(notificationId);
+      }
+    }
+  }
+}

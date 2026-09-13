@@ -1,0 +1,176 @@
+{
+  "entities": {
+    "BusinessProfile": {
+      "title": "BusinessProfile",
+      "description": "Profile of the business",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "logo": { "type": "string", "description": "URL or base64 of logo" },
+        "createdAt": { "type": "number", "description": "Creation timestamp" },
+        "updatedAt": { "type": "number", "description": "Update timestamp" }
+      },
+      "required": ["ownerId", "name", "phone", "address", "createdAt", "updatedAt"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "A product category",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["ownerId", "name", "createdAt", "updatedAt"]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "An item in the inventory",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "brand": { "type": "string" },
+        "compatibleCars": { "type": "string" },
+        "category": { "type": "string" },
+        "storageLocation": { "type": "string" },
+        "quantity": { "type": "number" },
+        "purchasePrice": { "type": "number" },
+        "sellPrice": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["ownerId", "code", "name", "brand", "compatibleCars", "category", "storageLocation", "quantity", "purchasePrice", "sellPrice", "createdAt", "updatedAt"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "A customer of the business",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "serialNumber": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "balance": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["ownerId", "serialNumber", "name", "phone", "balance", "createdAt", "updatedAt"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "A supplier of the business",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "balance": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["ownerId", "name", "phone", "balance", "createdAt", "updatedAt"]
+    },
+    "TransactionItem": {
+      "title": "TransactionItem",
+      "description": "An item within a transaction",
+      "type": "object",
+      "properties": {
+        "itemId": { "type": "string" },
+        "quantity": { "type": "number" },
+        "price": { "type": "number" }
+      },
+      "required": ["itemId", "quantity", "price"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "A sales invoice",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "date": { "type": "string" },
+        "customerId": { "type": "string" },
+        "items": { "type": "array", "items": { "$ref": "TransactionItem" } },
+        "total": { "type": "number" },
+        "paid": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "discountType": { "type": "string" },
+        "discountValue": { "type": "number" },
+        "isQuote": { "type": "boolean" },
+        "customCustomerName": { "type": "string" }
+      },
+      "required": ["ownerId", "invoiceNumber", "date", "customerId", "items", "total", "paid", "createdAt", "updatedAt"]
+    },
+    "PurchaseOrder": {
+      "title": "PurchaseOrder",
+      "description": "A purchase from a supplier",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "date": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "items": { "type": "array", "items": { "$ref": "TransactionItem" } },
+        "total": { "type": "number" },
+        "paid": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["ownerId", "date", "supplierId", "items", "total", "paid", "createdAt", "updatedAt"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "A notification",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "message": { "type": "string" },
+        "date": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["ownerId", "message", "date", "read", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}/profile/businessProfile": {
+      "schema": "BusinessProfile",
+      "description": "The user's business profile"
+    },
+    "users/{userId}/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Dynamic categories for inventory"
+    },
+    "users/{userId}/inventory/{itemId}": {
+      "schema": "InventoryItem",
+      "description": "User's inventory items"
+    },
+    "users/{userId}/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "User's customers"
+    },
+    "users/{userId}/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "User's suppliers"
+    },
+    "users/{userId}/invoices/{invoiceId}": {
+      "schema": "Invoice",
+      "description": "User's sales invoices"
+    },
+    "users/{userId}/purchases/{purchaseId}": {
+      "schema": "PurchaseOrder",
+      "description": "User's purchase orders"
+    },
+    "users/{userId}/notifications/{notificationId}": {
+      "schema": "AppNotification",
+      "description": "User's app notifications"
+    }
+  }
+}
