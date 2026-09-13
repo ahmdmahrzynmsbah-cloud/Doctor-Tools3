@@ -675,32 +675,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         setSyncStatus('synced');
         setLastSyncTime(new Date());
-        if (snap.empty) {
-          // If Firestore is empty but local has items, don't wipe! Upload local items instead!
-          const curInv = toSafeArray<InventoryItem>(inventoryRef.current);
-          if (curInv.length > 0) {
-            curInv.forEach(item => {
-              if (item && item.id) {
-                setDoc(doc(db, 'users', uid, 'inventory', item.id), {
-                  ...item,
-                  ownerId: uid,
-                  createdAt: item.createdAt || Date.now(),
-                  updatedAt: item.updatedAt || Date.now()
-                }, { merge: true }).catch(() => {});
-              }
-            });
-          }
-          return;
-        }
-        const remoteList = snap.docs
-          .map(d => ({ ...d.data(), id: d.id } as InventoryItem));
-        const remoteMap = new Map(remoteList.map(item => [item.id, item]));
-        toSafeArray<InventoryItem>(inventoryRef.current).forEach(loc => {
-          if (loc && loc.id && !remoteMap.has(loc.id)) {
-            remoteMap.set(loc.id, loc);
-          }
-        });
-        const list = Array.from(remoteMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as InventoryItem)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setInventory(list);
         saveStorageDebounced('doctor_tools_inventory', list, 0);
       }, (e) => {
@@ -711,31 +686,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         setSyncStatus('synced');
         setLastSyncTime(new Date());
-        if (snap.empty) {
-          const curCust = toSafeArray<Customer>(customersRef.current);
-          if (curCust.length > 0) {
-            curCust.forEach(c => {
-              if (c && c.id) {
-                setDoc(doc(db, 'users', uid, 'customers', c.id), {
-                  ...c,
-                  ownerId: uid,
-                  createdAt: c.createdAt || Date.now(),
-                  updatedAt: c.updatedAt || Date.now()
-                }, { merge: true }).catch(() => {});
-              }
-            });
-          }
-          return;
-        }
-        const remoteList = snap.docs
-          .map(d => ({ ...d.data(), id: d.id } as Customer));
-        const remoteMap = new Map(remoteList.map(c => [c.id, c]));
-        toSafeArray<Customer>(customersRef.current).forEach(loc => {
-          if (loc && loc.id && !remoteMap.has(loc.id)) {
-            remoteMap.set(loc.id, loc);
-          }
-        });
-        const list = Array.from(remoteMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as Customer)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setCustomers(list);
         saveStorageDebounced('doctor_tools_customers', list, 0);
       }, (e) => {
@@ -746,31 +697,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         setSyncStatus('synced');
         setLastSyncTime(new Date());
-        if (snap.empty) {
-          const curSups = toSafeArray<Supplier>(suppliersRef.current);
-          if (curSups.length > 0) {
-            curSups.forEach(s => {
-              if (s && s.id) {
-                setDoc(doc(db, 'users', uid, 'suppliers', s.id), {
-                  ...s,
-                  ownerId: uid,
-                  createdAt: s.createdAt || Date.now(),
-                  updatedAt: s.updatedAt || Date.now()
-                }, { merge: true }).catch(() => {});
-              }
-            });
-          }
-          return;
-        }
-        const remoteList = snap.docs
-          .map(d => ({ ...d.data(), id: d.id } as Supplier));
-        const remoteMap = new Map(remoteList.map(s => [s.id, s]));
-        toSafeArray<Supplier>(suppliersRef.current).forEach(loc => {
-          if (loc && loc.id && !remoteMap.has(loc.id)) {
-            remoteMap.set(loc.id, loc);
-          }
-        });
-        const list = Array.from(remoteMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as Supplier)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setSuppliers(list);
         saveStorageDebounced('doctor_tools_suppliers', list, 0);
       }, (e) => {
@@ -781,31 +708,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         setSyncStatus('synced');
         setLastSyncTime(new Date());
-        if (snap.empty) {
-          const curInvs = toSafeArray<Invoice>(invoicesRef.current);
-          if (curInvs.length > 0) {
-            curInvs.forEach(inv => {
-              if (inv && inv.id) {
-                setDoc(doc(db, 'users', uid, 'invoices', inv.id), {
-                  ...inv,
-                  ownerId: uid,
-                  createdAt: inv.createdAt || Date.now(),
-                  updatedAt: inv.updatedAt || Date.now()
-                }, { merge: true }).catch(() => {});
-              }
-            });
-          }
-          return;
-        }
-        const remoteList = snap.docs
-          .map(d => ({ ...d.data(), id: d.id } as Invoice));
-        const remoteMap = new Map(remoteList.map(inv => [inv.id, inv]));
-        toSafeArray<Invoice>(invoicesRef.current).forEach(loc => {
-          if (loc && loc.id && !remoteMap.has(loc.id)) {
-            remoteMap.set(loc.id, loc);
-          }
-        });
-        const list = Array.from(remoteMap.values()).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as Invoice)).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
         setInvoices(list);
         saveStorageDebounced('doctor_tools_invoices', list, 0);
       }, (e) => {
@@ -816,31 +719,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         setSyncStatus('synced');
         setLastSyncTime(new Date());
-        if (snap.empty) {
-          const curPurs = toSafeArray<PurchaseOrder>(purchasesRef.current);
-          if (curPurs.length > 0) {
-            curPurs.forEach(p => {
-              if (p && p.id) {
-                setDoc(doc(db, 'users', uid, 'purchases', p.id), {
-                  ...p,
-                  ownerId: uid,
-                  createdAt: p.createdAt || Date.now(),
-                  updatedAt: p.updatedAt || Date.now()
-                }, { merge: true }).catch(() => {});
-              }
-            });
-          }
-          return;
-        }
-        const remoteList = snap.docs
-          .map(d => ({ ...d.data(), id: d.id } as PurchaseOrder));
-        const remoteMap = new Map(remoteList.map(p => [p.id, p]));
-        toSafeArray<PurchaseOrder>(purchasesRef.current).forEach(loc => {
-          if (loc && loc.id && !remoteMap.has(loc.id)) {
-            remoteMap.set(loc.id, loc);
-          }
-        });
-        const list = Array.from(remoteMap.values()).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as PurchaseOrder)).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
         setPurchases(list);
         saveStorageDebounced('doctor_tools_purchases', list, 0);
       }, (e) => {
