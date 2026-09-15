@@ -36,9 +36,9 @@ async function seed() {
   const customer = {
     id: customerId,
     serialNumber: 'CUST-' + Math.floor(Math.random() * 100000),
-    name: 'محمد كمال نصار',
-    phone: '',
-    balance: 25000,
+    name: 'احمد محسن اكتوبر',
+    phone: '01285030634',
+    balance: 18380,
     ownerId: uid,
     createdAt: Date.now(),
     updatedAt: Date.now()
@@ -48,7 +48,16 @@ async function seed() {
   console.log("Created customer:", customer.name);
 
   const transactions = [
-    createInvoice(customerId, customer.name, "2026-06-25T10:00:00Z", 25000, [{ id: "temp", name: "رصيد مرحل (افتتاحي)", quantity: 1, sellPrice: 25000, total: 25000 }], true, "invoice"),
+    createInvoice(customerId, customer.name, "2026-06-18T10:00:00Z", 28380, [{ id: "temp", name: "رصيد مرحل (افتتاحي)", quantity: 1, sellPrice: 28380, total: 28380 }], true, "invoice"),
+    createInvoice(customerId, customer.name, "2026-06-22T12:00:00Z", 1000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-01T12:00:00Z", 1000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-06T12:00:00Z", 1000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-13T12:00:00Z", 1000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-30T12:00:00Z", 1000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-08-04T12:00:00Z", 1000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-08-17T12:00:00Z", 2000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-08-26T12:00:00Z", 1000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-09-04T12:00:00Z", 1000, [], false, "payment"),
   ];
 
   for (const t of transactions) {

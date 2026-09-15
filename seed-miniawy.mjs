@@ -36,9 +36,9 @@ async function seed() {
   const customer = {
     id: customerId,
     serialNumber: 'CUST-' + Math.floor(Math.random() * 100000),
-    name: 'محمد كمال نصار',
-    phone: '',
-    balance: 25000,
+    name: 'محمد المنياوي',
+    phone: '01114705710',
+    balance: 135050,
     ownerId: uid,
     createdAt: Date.now(),
     updatedAt: Date.now()
@@ -48,7 +48,19 @@ async function seed() {
   console.log("Created customer:", customer.name);
 
   const transactions = [
-    createInvoice(customerId, customer.name, "2026-06-25T10:00:00Z", 25000, [{ id: "temp", name: "رصيد مرحل (افتتاحي)", quantity: 1, sellPrice: 25000, total: 25000 }], true, "invoice"),
+    createInvoice(customerId, customer.name, "2026-06-18T10:00:00Z", 195050, [{ id: "temp", name: "رصيد مرحل (افتتاحي)", quantity: 1, sellPrice: 195050, total: 195050 }], true, "invoice"),
+    createInvoice(customerId, customer.name, "2026-06-21T12:00:00Z", 5000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-01T12:00:00Z", 5000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-05T12:00:00Z", 5000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-12T12:00:00Z", 5000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-23T12:00:00Z", 5000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-30T12:00:00Z", 5000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-08-04T12:00:00Z", 5000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-08-13T12:00:00Z", 5000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-08-16T12:00:00Z", 5000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-08-26T12:00:00Z", 5000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-09-04T12:00:00Z", 5000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-09-10T12:00:00Z", 5000, [], false, "payment"),
   ];
 
   for (const t of transactions) {

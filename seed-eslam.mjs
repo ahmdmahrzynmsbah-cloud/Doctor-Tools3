@@ -36,9 +36,9 @@ async function seed() {
   const customer = {
     id: customerId,
     serialNumber: 'CUST-' + Math.floor(Math.random() * 100000),
-    name: 'محمد كمال نصار',
-    phone: '',
-    balance: 25000,
+    name: 'م/ اسلام صلاح',
+    phone: '01120093893',
+    balance: 21625,
     ownerId: uid,
     createdAt: Date.now(),
     updatedAt: Date.now()
@@ -48,7 +48,44 @@ async function seed() {
   console.log("Created customer:", customer.name);
 
   const transactions = [
-    createInvoice(customerId, customer.name, "2026-06-25T10:00:00Z", 25000, [{ id: "temp", name: "رصيد مرحل (افتتاحي)", quantity: 1, sellPrice: 25000, total: 25000 }], true, "invoice"),
+    // 2026-08-04 SA-INV-1209 (37625 total, 20000 paid)
+    {
+      id: crypto.randomUUID(),
+      invoiceNumber: "SA-INV-1209",
+      date: new Date("2026-08-04T10:00:00Z").toISOString(),
+      customerId,
+      items: [
+         { id: crypto.randomUUID(), name: "مجموعة معدات وعدد وأجهزة فحص ومفكات وبنس ومسدسات (SA-INV-1209)", quantity: 1, sellPrice: 37625, total: 37625 }
+      ],
+      total: 37625,
+      paid: 20000,
+      ownerId: uid,
+      createdAt: new Date("2026-08-04T10:00:00Z").getTime(),
+      updatedAt: new Date("2026-08-04T10:00:00Z").getTime()
+    },
+
+    createInvoice(customerId, customer.name, "2026-08-13T12:00:00Z", 2000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-08-16T12:00:00Z", 2000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-08-26T12:00:00Z", 2000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-09-01T10:00:00Z", 2000, [], false, "payment"),
+
+    // 2026-09-01 SA-INV-1360 (14000 total)
+    {
+      id: crypto.randomUUID(),
+      invoiceNumber: "SA-INV-1360",
+      date: new Date("2026-09-01T12:00:00Z").toISOString(),
+      customerId,
+      items: [
+         { id: crypto.randomUUID(), name: "زرجينه تقسيمه N20 تيواني + زرجينه تقسيمه B38-48-58", quantity: 1, sellPrice: 14000, total: 14000 }
+      ],
+      total: 14000,
+      paid: 0,
+      ownerId: uid,
+      createdAt: new Date("2026-09-01T12:00:00Z").getTime(),
+      updatedAt: new Date("2026-09-01T12:00:00Z").getTime()
+    },
+
+    createInvoice(customerId, customer.name, "2026-09-01T14:00:00Z", 2000, [], false, "payment"),
   ];
 
   for (const t of transactions) {

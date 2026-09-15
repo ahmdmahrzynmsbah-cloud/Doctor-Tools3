@@ -1,0 +1,176 @@
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, setDoc } from 'firebase/firestore';
+import crypto from 'crypto';
+
+const firebaseConfig = {
+  projectId: "pos1-d562e",
+  appId: "1:607061495520:web:86e73b21063ba9c494ca85",
+  apiKey: "AIzaSyCmeCCutt5Q9NLuILm8i_XtM1QCSV4_aUo",
+  authDomain: "pos1-d562e.firebaseapp.com",
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app, "ai-studio-remixremixdoctor-f0577ee1-2a87-41e0-87d5-9d60e34ff5bd");
+const uid = 'main_store';
+
+function createInvoice(customerId, customerName, date, amount, items, isInitial = false, type = "invoice", invoiceNumber = null) {
+  const id = crypto.randomUUID();
+  const invNumber = invoiceNumber || (type === "payment" ? "PAY-" + Math.floor(Math.random() * 10000) : (isInitial ? "INIT-" : "INV-") + Math.floor(Math.random() * 10000));
+  const invoice = {
+    id,
+    invoiceNumber: invNumber,
+    date: new Date(date).toISOString(),
+    customerId,
+    items,
+    total: type === "payment" ? 0 : amount,
+    paid: type === "payment" ? amount : 0,
+    ownerId: uid,
+    createdAt: new Date(date).getTime(),
+    updatedAt: new Date(date).getTime()
+  };
+  return invoice;
+}
+
+async function seed() {
+  const customerId = crypto.randomUUID();
+  const customer = {
+    id: customerId,
+    serialNumber: 'CUST-' + Math.floor(Math.random() * 100000),
+    name: 'حسن رزق',
+    phone: '01140574721',
+    balance: 49900,
+    ownerId: uid,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+
+  await setDoc(doc(db, 'users', uid, 'customers', customerId), customer);
+  console.log("Created customer:", customer.name);
+
+  const transactions = [
+    createInvoice(customerId, customer.name, "2026-06-18T10:00:00Z", 48450, [{ id: "temp", name: "رصيد مرحل (افتتاحي)", quantity: 1, sellPrice: 48450, total: 48450 }], true, "invoice"),
+    
+    // 2026-06-21 SA-INV-1009 (850 total)
+    {
+      id: crypto.randomUUID(),
+      invoiceNumber: "SA-INV-1009",
+      date: new Date("2026-06-21T10:00:00Z").toISOString(),
+      customerId,
+      items: [
+         { id: crypto.randomUUID(), name: "لقمه بوجيهات 16 king Tony", quantity: 1, sellPrice: 850, total: 850 }
+      ],
+      total: 850,
+      paid: 0,
+      ownerId: uid,
+      createdAt: new Date("2026-06-21T10:00:00Z").getTime(),
+      updatedAt: new Date("2026-06-21T10:00:00Z").getTime()
+    },
+
+    createInvoice(customerId, customer.name, "2026-06-21T14:00:00Z", 2000, [], false, "payment"),
+
+    // 2026-07-01 SA-INV-1042 (4500 total)
+    {
+      id: crypto.randomUUID(),
+      invoiceNumber: "SA-INV-1042",
+      date: new Date("2026-07-01T10:00:00Z").toISOString(),
+      customerId,
+      items: [
+         { id: crypto.randomUUID(), name: "زرجينه BMW - N13", quantity: 1, sellPrice: 4500, total: 4500 }
+      ],
+      total: 4500,
+      paid: 0,
+      ownerId: uid,
+      createdAt: new Date("2026-07-01T10:00:00Z").getTime(),
+      updatedAt: new Date("2026-07-01T10:00:00Z").getTime()
+    },
+
+    createInvoice(customerId, customer.name, "2026-07-01T14:00:00Z", 2000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-05T12:00:00Z", 2000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-12T12:00:00Z", 2000, [], false, "payment"),
+
+    // 2026-07-23 SA-INV-1169 (6500 total)
+    {
+      id: crypto.randomUUID(),
+      invoiceNumber: "SA-INV-1169",
+      date: new Date("2026-07-23T10:00:00Z").toISOString(),
+      customerId,
+      items: [
+         { id: crypto.randomUUID(), name: "دريل بطاريه 800N - 4A - APT", quantity: 1, sellPrice: 6500, total: 6500 }
+      ],
+      total: 6500,
+      paid: 0,
+      ownerId: uid,
+      createdAt: new Date("2026-07-23T10:00:00Z").getTime(),
+      updatedAt: new Date("2026-07-23T10:00:00Z").getTime()
+    },
+
+    createInvoice(customerId, customer.name, "2026-07-23T14:00:00Z", 2000, [], false, "payment"),
+
+    // 2026-07-30 SA-INV-1200 (1150 total)
+    {
+      id: crypto.randomUUID(),
+      invoiceNumber: "SA-INV-1200",
+      date: new Date("2026-07-30T10:00:00Z").toISOString(),
+      customerId,
+      items: [
+         { id: crypto.randomUUID(), name: "طقم اولسيهات مقاسات + صيانه دريل", quantity: 1, sellPrice: 1150, total: 1150 }
+      ],
+      total: 1150,
+      paid: 0,
+      ownerId: uid,
+      createdAt: new Date("2026-07-30T10:00:00Z").getTime(),
+      updatedAt: new Date("2026-07-30T10:00:00Z").getTime()
+    },
+
+    createInvoice(customerId, customer.name, "2026-08-03T12:00:00Z", 2000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-08-04T12:00:00Z", 2550, [], false, "payment"),
+
+    // 2026-08-04 SA-INV-1216 (7500 total)
+    {
+      id: crypto.randomUUID(),
+      invoiceNumber: "SA-INV-1216",
+      date: new Date("2026-08-04T14:00:00Z").toISOString(),
+      customerId,
+      items: [
+         { id: crypto.randomUUID(), name: "منجله 8 بوصه انجليزي", quantity: 1, sellPrice: 7500, total: 7500 }
+      ],
+      total: 7500,
+      paid: 0,
+      ownerId: uid,
+      createdAt: new Date("2026-08-04T14:00:00Z").getTime(),
+      updatedAt: new Date("2026-08-04T14:00:00Z").getTime()
+    },
+
+    createInvoice(customerId, customer.name, "2026-08-13T12:00:00Z", 2000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-08-16T12:00:00Z", 2000, [], false, "payment"),
+
+    // 2026-08-26 SA-INV-1335 (5500 total)
+    {
+      id: crypto.randomUUID(),
+      invoiceNumber: "SA-INV-1335",
+      date: new Date("2026-08-26T10:00:00Z").toISOString(),
+      customerId,
+      items: [
+         { id: crypto.randomUUID(), name: "زرجينه تقسيمه N20 صيني", quantity: 1, sellPrice: 5500, total: 5500 }
+      ],
+      total: 5500,
+      paid: 0,
+      ownerId: uid,
+      createdAt: new Date("2026-08-26T10:00:00Z").getTime(),
+      updatedAt: new Date("2026-08-26T10:00:00Z").getTime()
+    },
+
+    createInvoice(customerId, customer.name, "2026-08-26T14:00:00Z", 2000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-09-04T12:00:00Z", 2000, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-09-10T12:00:00Z", 2000, [], false, "payment"),
+  ];
+
+  for (const t of transactions) {
+    await setDoc(doc(db, 'users', uid, 'invoices', t.id), t);
+    console.log("Inserted transaction on", t.date, "total:", t.total, "paid:", t.paid);
+  }
+
+  console.log("All done!");
+}
+
+seed().then(() => process.exit(0)).catch(console.error);

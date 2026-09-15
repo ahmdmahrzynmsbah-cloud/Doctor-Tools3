@@ -36,9 +36,9 @@ async function seed() {
   const customer = {
     id: customerId,
     serialNumber: 'CUST-' + Math.floor(Math.random() * 100000),
-    name: 'محمد كمال نصار',
-    phone: '',
-    balance: 25000,
+    name: 'علي عسكر',
+    phone: '01111604705',
+    balance: 65,
     ownerId: uid,
     createdAt: Date.now(),
     updatedAt: Date.now()
@@ -48,7 +48,32 @@ async function seed() {
   console.log("Created customer:", customer.name);
 
   const transactions = [
-    createInvoice(customerId, customer.name, "2026-06-25T10:00:00Z", 25000, [{ id: "temp", name: "رصيد مرحل (افتتاحي)", quantity: 1, sellPrice: 25000, total: 25000 }], true, "invoice"),
+    createInvoice(customerId, customer.name, "2026-06-18T10:00:00Z", 3400, [{ id: "temp", name: "رصيد مرحل (افتتاحي)", quantity: 1, sellPrice: 3400, total: 3400 }], true, "invoice"),
+    createInvoice(customerId, customer.name, "2026-06-21T12:00:00Z", 500, [], false, "payment"),
+    
+    // 2026-07-05 SA-INV-1090 (965 total)
+    {
+      id: crypto.randomUUID(),
+      invoiceNumber: "SA-INV-1090",
+      date: new Date("2026-07-05T10:00:00Z").toISOString(),
+      customerId,
+      items: [
+         { id: crypto.randomUUID(), name: "مفك دق 6 بوصه", quantity: 4, sellPrice: 100, total: 400 },
+         { id: crypto.randomUUID(), name: "لقمه 22 طويله سودا", quantity: 1, sellPrice: 150, total: 150 },
+         { id: crypto.randomUUID(), name: "مفاتيح متنوعة (18 و 14 و مشرشر و الن)", quantity: 1, sellPrice: 415, total: 415 }
+      ],
+      total: 965,
+      paid: 0,
+      ownerId: uid,
+      createdAt: new Date("2026-07-05T10:00:00Z").getTime(),
+      updatedAt: new Date("2026-07-05T10:00:00Z").getTime()
+    },
+    
+    createInvoice(customerId, customer.name, "2026-07-05T12:00:00Z", 1500, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-12T12:00:00Z", 500, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-23T12:00:00Z", 500, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-07-30T12:00:00Z", 500, [], false, "payment"),
+    createInvoice(customerId, customer.name, "2026-08-04T12:00:00Z", 800, [], false, "payment"),
   ];
 
   for (const t of transactions) {
