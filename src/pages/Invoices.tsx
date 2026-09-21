@@ -3,7 +3,6 @@ import { Plus, Search, FileText, X, Printer, Edit, Trash2, ListStart, List, Barc
 import { jsPDF } from 'jspdf';
 import { useAppData } from '@/src/context/AppDataContext';
 import InvoicePrint from '../components/InvoicePrint';
-import VoiceFeatureBanner from '../components/VoiceFeatureBanner';
 import { captureElementToCanvas } from '../utils/canvasCapture';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 
@@ -595,10 +594,6 @@ export default function Invoices() {
       )}
 
       <div className="space-y-6 print:hidden">
-        
-        {/* Voice Feature Announcement Banner */}
-        <VoiceFeatureBanner />
-        
         {/* Top Toggle Bar */}
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 p-1.5 sm:p-2 bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0]">
           <button 
