@@ -113,7 +113,8 @@ export default function InvoicePrint({ invoice, customer, inventory, profile }: 
             </thead>
             <tbody className="divide-y divide-[#E2E8F0] bg-white print:table-row-group" style={{ backgroundColor: '#ffffff' }}>
               {invoice.items.slice(0).map((item, idx) => {
-                const invItem = inventory.find(i => i.id === item.itemId);
+                const invItem = inventory.find(i => i.id === item.itemId || i.id === (item as any).id);
+                const itemName = invItem?.name || (item as any).name || (item as any).itemName || (item as any).description || 'صنف';
                 const lineTotal = item.quantity * item.price;
                 const rowBg = idx % 2 === 0 ? '#ffffff' : '#F8FAFC';
                 return (
@@ -121,7 +122,7 @@ export default function InvoicePrint({ invoice, customer, inventory, profile }: 
                     <td className="py-2.5 px-3 text-center font-mono font-bold text-[#64748B] text-xs sm:text-sm print:text-black" style={{ color: '#64748B', backgroundColor: rowBg, padding: '10px 12px' }}>{idx + 1}</td>
                     <td className="py-2.5 px-3 align-top text-right" style={{ backgroundColor: rowBg, padding: '10px 12px' }}>
                       <span className="font-bold text-[#0F172A] text-xs sm:text-sm" style={{ color: '#0F172A', fontWeight: 700 }}>
-                        {formatMixedText(invItem?.name || 'صنف محذوف')}
+                        {formatMixedText(itemName)}
                       </span>
                       {invItem?.code && (
                         <>

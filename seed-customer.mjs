@@ -38,8 +38,9 @@ async function seed() {
     customerId: customerId,
     items: [
       {
-        itemId: 'deleted-item',
-        itemName: 'صنف محذوف (1)',
+        itemId: 'UEzqVvF2WMpNBMbwJCOF',
+        itemName: 'كمبروسر 50 لتر نحاس APT',
+        name: 'كمبروسر 50 لتر نحاس APT',
         quantity: 1,
         price: 16250
       }

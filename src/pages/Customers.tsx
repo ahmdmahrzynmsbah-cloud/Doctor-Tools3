@@ -153,28 +153,32 @@ export default function Customers() {
 
     transactions.forEach(inv => {
       const isPayment = inv.items.length === 0;
+      const isInit = inv.invoiceNumber.startsWith('INIT-') || (inv.items.length === 1 && (inv.items[0]?.name === 'رصيد مرحل (افتتاحي)' || (inv.items[0] as any)?.itemName === 'رصيد مرحل (افتتاحي)'));
       const debit = inv.total;
       const credit = inv.paid;
       
       currentBalance += (debit - credit);
 
       let invoiceDetails = '';
-      if (!isPayment && inv.items.length > 0) {
-        const itemNames = inv.items.map(item => {
-          const inventoryItem = inventory.find(i => i.id === item.itemId);
-          return inventoryItem ? `${inventoryItem.name} (${item.quantity})` : `صنف محذوف (${item.quantity})`;
+      if (!isPayment && !isInit && inv.items.length > 0) {
+        const itemNames = inv.items.map((item: any) => {
+          const inventoryItem = inventory.find(i => i.id === item.itemId || i.id === item.id);
+          const name = item.name || item.itemName || inventoryItem?.name || item.description || 'صنف';
+          return `${name} (${item.quantity})`;
         });
         invoiceDetails = ` - أصناف: ${itemNames.join('، ')}`;
       }
 
+      const invNumDisplay = inv.invoiceNumber.startsWith('SA-') ? inv.invoiceNumber : `SA-${inv.invoiceNumber}`;
+
       entries.push({
         id: inv.id,
         date: new Date(inv.date).toLocaleDateString('ar-EG'),
-        description: isPayment ? `دفعة نقدية مسددة` : `فاتورة مبيعات SA-${inv.invoiceNumber}${invoiceDetails}`,
+        description: isInit ? 'رصيد مرحل (افتتاحي)' : (isPayment ? `دفعة نقدية مسددة` : `فاتورة مبيعات ${invNumDisplay}${invoiceDetails}`),
         debit: debit,
         credit: credit,
         balance: currentBalance,
-        isInitial: false
+        isInitial: isInit
       });
     });
 
@@ -582,7 +586,7 @@ export default function Customers() {
                    className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 bg-[#16A34A] text-white rounded-xl font-bold text-xs hover:bg-[#15803D] transition-colors border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                  >
                     {isGeneratingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
-                    <span>مشاركة واتساب</span>
+                    <span>{!selectedCustomer.phone ? 'مشاركة (لا يوجد رقم)' : 'مشاركة واتساب'}</span>
                  </button>
                  <button onClick={handlePrintStatement} className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 bg-[#2563EB] text-white rounded-xl font-bold text-xs hover:bg-[#1D4ED8] transition-colors border-none cursor-pointer shadow-sm">
                     <Printer className="w-4 h-4" />
@@ -609,7 +613,7 @@ export default function Customers() {
                   <div className="text-left">
                     <h2 className="text-xl sm:text-2xl font-bold text-[#1E293B] mb-1">كشف حساب عميل</h2>
                     <div className="text-xs sm:text-sm font-bold text-[#475569]">
-                      <span>تاريخ التقرير: {new Date().toLocaleDateString('ar-EG')}</span>
+                      <span>تاريخ الطباعة: {new Date().toLocaleDateString('ar-EG')}</span>
                     </div>
                   </div>
                 </div>
@@ -623,12 +627,12 @@ export default function Customers() {
                   <div>
                     <h3 className="font-bold text-[#1E293B] text-base sm:text-lg print:text-xl">اسم العميل: {selectedCustomer.name || 'عميل'}</h3>
                     <p className="text-xs sm:text-sm text-[#475569] font-mono mt-0.5 print:text-[#1E293B]">
-                      رقم الهاتف: {selectedCustomer.phone ? selectedCustomer.phone : 'غير مسجل'}
+                      تليفون : {selectedCustomer.phone || ''}
                     </p>
                   </div>
                 </div>
                 <div className="text-left bg-white px-5 py-3 rounded-xl shadow-sm border border-[#E2E8F0] w-full sm:w-auto print:shadow-none print:px-4">
-                  <p className="text-xs text-[#475569] font-bold mb-1 block">الرصيد المالي الحالي</p>
+                  <p className="text-xs text-[#475569] font-bold mb-1 block">الرصيد الحالي</p>
                   <p className={`text-2xl font-black ${Number(selectedCustomer.balance || 0) > 0 ? 'text-[#DC2626]' : Number(selectedCustomer.balance || 0) < 0 ? 'text-[#16A34A]' : 'text-[#1E293B]'} print:text-black font-mono`} dir="ltr">
                     {Math.abs(Number(selectedCustomer.balance || 0)).toLocaleString()} <span className="text-xs text-[#94A3B8] print:text-black">ج.م</span>
                   </p>

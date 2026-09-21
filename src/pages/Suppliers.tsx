@@ -89,8 +89,8 @@ export default function Suppliers() {
       let purchaseDetails = '';
       if (!isPayment && inv.items.length > 0) {
         const itemDetails = inv.items.map(item => {
-          const inventoryItem = inventory.find(i => i.id === item.itemId);
-          const name = inventoryItem ? inventoryItem.name : ((item as any).name || (item as any).itemName || 'صنف محذوف');
+          const inventoryItem = inventory.find(i => i.id === item.itemId || i.id === (item as any).id);
+          const name = inventoryItem ? inventoryItem.name : ((item as any).name || (item as any).itemName || 'صنف');
           const itemPrice = (item as any).price ?? (item as any).unitPrice ?? 0;
           const totalItemPrice = Number((item.quantity || 0) * (itemPrice || 0)).toLocaleString();
           return `${name} (العدد: ${item.quantity} | السعر الكلي: ${totalItemPrice} ج.م)`;
@@ -314,10 +314,10 @@ export default function Suppliers() {
       
       text += `*الأصناف:*\n`;
       (purchase.items || []).forEach((item: any, idx: number) => {
-        const invItem = inventory.find(i => i.id === item.itemId);
+        const invItem = inventory.find(i => i.id === item.itemId || i.id === (item as any).id);
         const qty = item.quantity || 0;
         const price = item.price ?? item.unitPrice ?? 0;
-        const itemName = invItem ? invItem.name : ((item as any).name || (item as any).itemName || 'صنف محذوف');
+        const itemName = invItem ? invItem.name : ((item as any).name || (item as any).itemName || 'صنف');
         text += `${idx + 1}- ${itemName} | ${qty} x ${Number(price || 0).toLocaleString()} = ${Number((qty || 0) * (price || 0)).toLocaleString()} ج.م\n`;
       });
       
@@ -1251,13 +1251,13 @@ export default function Suppliers() {
                   </thead>
                   <tbody className="divide-y divide-[#E2E8F0]">
                     {printingPurchase.items.map((item: any, idx: number) => {
-                      const invItem = inventory.find(i => i.id === item.itemId);
+                      const invItem = inventory.find(i => i.id === item.itemId || i.id === item.id);
                       const unitPrice = item.price ?? item.unitPrice ?? 0;
                       return (
                         <tr key={`purchase-item-${idx}`}>
                           <td className="py-4 px-4 text-sm text-[#64748B] font-bold print:text-black">{idx + 1}</td>
                           <td className="py-4 px-4 print:text-black">
-                            <span className="font-bold text-[#1E293B] block">{invItem ? invItem.name : ((item as any).name || (item as any).itemName || 'صنف محذوف')}</span>
+                            <span className="font-bold text-[#1E293B] block">{invItem ? invItem.name : ((item as any).name || (item as any).itemName || 'صنف')}</span>
                             {invItem && <span className="text-xs text-[#94A3B8] mt-1 font-mono">{invItem.code}</span>}
                           </td>
                           <td className="py-4 px-4 text-sm text-center font-bold text-[#475569] print:text-black" dir="ltr">{item.quantity}</td>

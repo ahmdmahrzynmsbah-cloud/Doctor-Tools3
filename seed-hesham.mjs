@@ -59,7 +59,7 @@ async function seed() {
       date: new Date("2026-09-02T10:00:00Z").toISOString(),
       customerId,
       items: [
-         { id: crypto.randomUUID(), name: "صنف محذوف", quantity: 1, sellPrice: 1425, total: 1425 },
+         { id: crypto.randomUUID(), name: "لقمه ريداتير 12 معدن", quantity: 1, sellPrice: 1425, total: 1425 },
          { id: crypto.randomUUID(), name: "لقمه ريداتير 10 معدن", quantity: 1, sellPrice: 1425, total: 1425 }
       ],
       total: 2850,
