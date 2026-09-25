@@ -257,44 +257,51 @@ export default function InvoicePrint({ invoice, customer, inventory, profile, al
               </div>
             </div>
 
-            {/* Related Invoices Table (Credited Invoices) */}
-            {customerInvoices.length > 0 && (
-              <div className="rounded-xl border border-[#E2E8F0] overflow-hidden">
-                <div className="bg-[#F8FAFC] px-4 py-2.5 border-b border-[#E2E8F0] flex justify-between items-center text-xs font-bold text-[#475569]">
-                  <span className="flex items-center gap-1.5">
-                    <Receipt className="w-4 h-4 text-[#2180B2]" />
-                    بيان فواتير المبيعات المرتبطة بحساب العميل
-                  </span>
-                  <span>إجمالي الفواتير: {Number(totalCustomerInvoices).toLocaleString()} ج.م</span>
-                </div>
-                <table className="w-full text-right border-collapse text-xs">
-                  <thead className="bg-[#0F172A] text-white">
-                    <tr>
-                      <th className="py-2 px-3 text-center w-12">م</th>
-                      <th className="py-2 px-3">رقم الفاتورة</th>
-                      <th className="py-2 px-3 text-center">التاريخ</th>
-                      <th className="py-2 px-3 text-center">عدد الأصناف</th>
-                      <th className="py-2 px-3 text-left">قيمة الفاتورة (ج.م)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#E2E8F0] bg-white">
-                    {customerInvoices.map((inv, idx) => (
-                      <tr key={inv.id || idx} className="hover:bg-[#F8FAFC]">
-                        <td className="py-2 px-3 text-center font-mono font-bold text-slate-500">{idx + 1}</td>
-                        <td className="py-2 px-3 font-mono font-bold text-[#2180B2]">#{inv.invoiceNumber}</td>
-                        <td className="py-2 px-3 text-center text-slate-600 font-mono">
-                          {new Date(inv.date).toLocaleDateString('ar-EG')}
-                        </td>
-                        <td className="py-2 px-3 text-center font-mono text-slate-700">{inv.items?.length || 0}</td>
-                        <td className="py-2 px-3 text-left font-mono font-bold text-slate-900">
-                          {Number(inv.total || 0).toLocaleString()} ج.م
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Clean Payment Summary Table: Previous Balance, Paid Amount, Remaining Balance */}
+            <div className="rounded-2xl border-2 border-[#CBD5E1] overflow-hidden mb-6 shadow-sm bg-white">
+              <div className="bg-[#0F172A] px-5 py-3 text-white text-sm font-extrabold flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-[#38BDF8]" />
+                  ملخص الحركة المالية وحساب العميل
+                </span>
+                <span className="text-xs font-mono text-slate-300">السند: #{invoice.invoiceNumber}</span>
               </div>
-            )}
+              <table className="w-full text-right border-collapse text-sm sm:text-base">
+                <thead className="bg-[#F8FAFC] text-[#475569] border-b border-[#E2E8F0]">
+                  <tr>
+                    <th className="py-3 px-4 font-bold">بيان الحركة المالية</th>
+                    <th className="py-3 px-4 text-center font-bold">التاريخ</th>
+                    <th className="py-3 px-4 text-left font-bold">المبلغ (ج.م)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E2E8F0]">
+                  <tr className="hover:bg-[#F8FAFC]">
+                    <td className="py-4 px-4 font-bold text-[#1E293B]">1. رصيد العميل السابق (قبل هذا السند)</td>
+                    <td className="py-4 px-4 text-center text-slate-600 font-mono text-xs">{new Date(invoice.date).toLocaleDateString('ar-EG')}</td>
+                    <td className="py-4 px-4 text-left font-mono font-bold text-[#1E293B]" dir="ltr">
+                      {Number(customerBalanceBefore).toLocaleString()} ج.م
+                    </td>
+                  </tr>
+                  <tr className="bg-[#F0FDF4] hover:bg-[#DCFCE7]/50">
+                    <td className="py-4 px-4 font-black text-[#15803D] flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-[#16A34A]" />
+                      2. المبلغ الذي سدده العميل (بهذا السند)
+                    </td>
+                    <td className="py-4 px-4 text-center text-[#166534] font-mono text-xs">{new Date(invoice.date).toLocaleDateString('ar-EG')}</td>
+                    <td className="py-4 px-4 text-left font-mono font-black text-[#166534]" dir="ltr">
+                      -{Number(paidThisReceipt).toLocaleString()} ج.م
+                    </td>
+                  </tr>
+                  <tr className="bg-[#F8FAFC] font-extrabold">
+                    <td className="py-4 px-4 text-[#0F172A]">3. الرصيد المتبقي بذمة العميل</td>
+                    <td className="py-4 px-4 text-center text-slate-400 font-mono text-xs">—</td>
+                    <td className={`py-4 px-4 text-left font-mono font-black ${customerBalanceAfter > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}`} dir="ltr">
+                      {Number(customerBalanceAfter).toLocaleString()} ج.م
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : (
           /* ------------------------------------------------------------- */
@@ -367,47 +374,40 @@ export default function InvoicePrint({ invoice, customer, inventory, profile, al
           </div>
 
           {/* Right: Beautiful Bento-style Totals Summary */}
-          <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] p-4 space-y-2 shadow-sm text-right" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '16px' }}>
+          <div className="bg-[#F8FAFC] rounded-2xl border-2 border-[#CBD5E1] p-5 space-y-3.5 shadow-md text-right" style={{ backgroundColor: '#F8FAFC', border: '2px solid #CBD5E1', borderRadius: '16px', padding: '20px' }}>
             {isPaymentReceipt ? (
               /* Receipt Financial Breakdown */
               <>
-                <div className="flex justify-between items-center text-[#475569] border-b border-[#E2E8F0] pb-2 text-xs font-semibold">
-                  <span className="text-xs text-slate-600">رصيد العميل السابق (قبل هذا السند):</span>
-                  <div className="font-mono text-sm sm:text-base font-bold text-[#1E293B] inline-flex items-center gap-1" dir="ltr">
+                <div className="flex justify-between items-center text-[#475569] border-b border-[#CBD5E1] pb-3 text-sm font-bold">
+                  <span className="text-sm text-slate-700">رصيد العميل السابق (قبل السند):</span>
+                  <div className="font-mono text-base sm:text-lg font-bold text-[#1E293B] inline-flex items-center gap-1" dir="ltr">
                     <span>{Number(customerBalanceBefore).toLocaleString()}</span>
                     <span dir="rtl" className="text-xs font-normal">ج.م</span>
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center text-[#16A34A] border-b border-[#E2E8F0] pb-2 text-xs font-bold bg-[#F0FDF4] px-2.5 py-1.5 rounded-lg border border-[#BBF7D0]">
-                  <span className="text-xs font-black text-[#15803D]">المبلغ المسدد والمخصوم بهذا السند:</span>
-                  <div className="font-mono text-base font-black text-[#166534] inline-flex items-center gap-1" dir="ltr">
+                <div className="flex justify-between items-center text-[#16A34A] border-b border-[#CBD5E1] pb-3 text-sm font-bold bg-[#F0FDF4] px-3.5 py-2.5 rounded-xl border border-[#BBF7D0]">
+                  <span className="text-sm font-black text-[#15803D]">المبلغ المسدد بهذا السند:</span>
+                  <div className="font-mono text-lg font-black text-[#166534] inline-flex items-center gap-1" dir="ltr">
                     <span>-{Number(paidThisReceipt).toLocaleString()}</span>
                     <span dir="rtl" className="text-xs font-normal">ج.م</span>
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center pt-1.5">
+                <div className="flex justify-between items-center pt-2">
                   <div className="flex flex-col text-right">
-                    <span className="text-xs sm:text-sm font-black text-[#0F172A]">الرصيد المتبقي بذمة العميل بعد السداد:</span>
+                    <span className="text-sm sm:text-base font-black text-[#0F172A]">الرصيد المتبقي بذمة العميل:</span>
                     {customerBalanceAfter > 0 ? (
-                      <span className="text-[10px] text-[#DC2626] font-bold">(متبقي على العميل)</span>
+                      <span className="text-xs text-[#DC2626] font-extrabold">(متبقي على العميل)</span>
                     ) : (
-                      <span className="text-[10px] text-[#16A34A] font-bold">(تمت التصفية بالكامل - خالص)</span>
+                      <span className="text-xs text-[#16A34A] font-extrabold">(تمت التصفية بالكامل - خالص)</span>
                     )}
                   </div>
-                  <div className={`font-mono text-base sm:text-lg font-black ${customerBalanceAfter > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'} inline-flex items-center gap-1`} dir="ltr">
+                  <div className={`font-mono text-xl sm:text-2xl font-black ${customerBalanceAfter > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'} inline-flex items-center gap-1`} dir="ltr">
                     <span>{Number(customerBalanceAfter).toLocaleString()}</span>
-                    <span dir="rtl" className="text-xs font-normal">ج.م</span>
+                    <span dir="rtl" className="text-sm font-normal">ج.م</span>
                   </div>
                 </div>
-
-                {calcTotalCustomerInvoices > 0 && (
-                  <div className="flex justify-between items-center text-slate-500 border-t border-dashed border-[#CBD5E1] pt-1.5 text-[11px]">
-                    <span>إجمالي الفواتير: {Number(calcTotalCustomerInvoices).toLocaleString()} ج.م</span>
-                    <span className="font-semibold text-emerald-700">إجمالي المسدد: {Number(customerTotalPaid).toLocaleString()} ج.م</span>
-                  </div>
-                )}
               </>
             ) : (
               /* Regular Sales Invoice Breakdown */

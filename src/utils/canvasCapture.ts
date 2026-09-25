@@ -58,6 +58,37 @@ export async function captureElementToCanvas(containerEl: HTMLElement, customWid
       scrollX: 0,
       scrollY: 0,
             onclone: (clonedDoc) => {
+        // Sanitize oklab and oklch in style tags to prevent html2canvas parsing errors
+        try {
+          const styleTags = clonedDoc.querySelectorAll('style');
+          styleTags.forEach(tag => {
+            if (tag.textContent && (tag.textContent.includes('oklab') || tag.textContent.includes('oklch'))) {
+              tag.textContent = tag.textContent
+                .replace(/oklab\([^)]+\)/g, '#1E293B')
+                .replace(/oklch\([^)]+\)/g, '#1E293B');
+            }
+          });
+
+          // Sanitize inline styles on elements
+          const allElements = clonedDoc.querySelectorAll('*');
+          allElements.forEach(el => {
+            const htmlEl = el as HTMLElement;
+            if (htmlEl.style) {
+              if (htmlEl.style.color && (htmlEl.style.color.includes('oklab') || htmlEl.style.color.includes('oklch'))) {
+                htmlEl.style.color = '#1E293B';
+              }
+              if (htmlEl.style.backgroundColor && (htmlEl.style.backgroundColor.includes('oklab') || htmlEl.style.backgroundColor.includes('oklch'))) {
+                htmlEl.style.backgroundColor = '#ffffff';
+              }
+              if (htmlEl.style.borderColor && (htmlEl.style.borderColor.includes('oklab') || htmlEl.style.borderColor.includes('oklch'))) {
+                htmlEl.style.borderColor = '#E2E8F0';
+              }
+            }
+          });
+        } catch (e) {
+          console.warn('Oklab sanitization warning:', e);
+        }
+
         const hiddenElements = clonedDoc.querySelectorAll('.print\\:hidden');
         hiddenElements.forEach(el => {
           (el as HTMLElement).style.display = 'none';
