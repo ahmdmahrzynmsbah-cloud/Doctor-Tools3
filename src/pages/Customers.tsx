@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Search, Users as UsersIcon, X, History, User, Banknote, Edit2, Trash2, Printer, MessageCircle, Share2, Loader2, Calendar } from 'lucide-react';
+import { Plus, Search, Users as UsersIcon, X, History, User, Banknote, Edit2, Trash2, Printer, MessageCircle, Share2, Loader2, Calendar, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useAppData, Customer } from '@/src/context/AppDataContext';
 import { captureElementToCanvas } from '../utils/canvasCapture';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 
 export default function Customers() {
-  const { customers, invoices, inventory, addCustomer, updateCustomer, deleteCustomer, recordCustomerPayment, businessProfile } = useAppData();
+  const { customers, invoices, inventory, addCustomer, updateCustomer, deleteCustomer, recordCustomerPayment, auditAndReconcileBalances, businessProfile } = useAppData();
   const [searchTerm, setSearchTerm] = useState('');
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [auditSuccessMsg, setAuditSuccessMsg] = useState<string | null>(null);
   
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -25,6 +27,38 @@ export default function Customers() {
   }>({
     name: '', phone: '', balance: '', date: new Date().toISOString().split('T')[0]
   });
+
+  const customerFinancials = useMemo(() => {
+    const map = new Map<string, { totalInvoices: number; totalPaid: number; remainingDebt: number; invoiceCount: number }>();
+    
+    customers.forEach(c => {
+      const cInvoices = invoices.filter(i => i.customerId === c.id && !i.isQuote);
+      const salesInvs = cInvoices.filter(i => !i.invoiceNumber.startsWith('PAY-') && ((i.items && i.items.length > 0) || Number(i.total || 0) > 0));
+      const payInvs = cInvoices.filter(i => i.invoiceNumber.startsWith('PAY-') || (!i.items || i.items.length === 0));
+
+      const salesTotal = salesInvs.reduce((acc, i) => acc + Number(i.total || 0), 0);
+      const directPaid = salesInvs.reduce((acc, i) => acc + Number(i.paid || 0), 0);
+      const vouchersPaid = payInvs.reduce((acc, i) => acc + Number(i.paid || 0), 0);
+      const totalPaid = directPaid + vouchersPaid;
+      
+      const storedBalance = Number(c.balance || 0);
+      const netTransChange = salesTotal - totalPaid;
+      const initialOpeningBalance = storedBalance - netTransChange;
+      const grandTotalTransactions = initialOpeningBalance > 0 ? (salesTotal + initialOpeningBalance) : salesTotal;
+      
+      // Exact remaining debt: if stored balance is 0 but there are unpaid sales invoices, ensure true net debt is used
+      const accurateDebt = (storedBalance === 0 && netTransChange > 0) ? netTransChange : storedBalance;
+
+      map.set(c.id, {
+        totalInvoices: grandTotalTransactions,
+        totalPaid: totalPaid,
+        remainingDebt: accurateDebt,
+        invoiceCount: salesInvs.length
+      });
+    });
+
+    return map;
+  }, [customers, invoices]);
 
   const filteredCustomers = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -106,19 +140,24 @@ export default function Customers() {
     }
   };
 
+  const activeCustomer = useMemo(() => {
+    if (!selectedCustomer) return null;
+    return customers.find(c => c.id === selectedCustomer.id) || selectedCustomer;
+  }, [selectedCustomer, customers]);
+
   const getCustomerTransactions = (customerId: string) => {
-    return invoices.filter(inv => inv.customerId === customerId);
+    return invoices.filter(inv => inv.customerId === customerId && !inv.isQuote);
   };
 
   const ledgerEntries = useMemo(() => {
-    if (!selectedCustomer) return [];
+    if (!activeCustomer) return [];
 
-    const transactions = [...getCustomerTransactions(selectedCustomer.id)].sort(
+    const transactions = [...getCustomerTransactions(activeCustomer.id)].sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
-    let netChange = transactions.reduce((acc, inv) => acc + (inv.total - inv.paid), 0);
-    const initialBalance = selectedCustomer.balance - netChange;
+    let netChange = transactions.reduce((acc, inv) => acc + (Number(inv.total || 0) - Number(inv.paid || 0)), 0);
+    const initialBalance = (activeCustomer.balance || 0) - netChange;
 
     let currentBalance = initialBalance;
     const entries = [];
@@ -142,7 +181,7 @@ export default function Customers() {
     if (initialBalance !== 0 || transactions.length === 0) {
       entries.push({
         id: 'initial',
-        date: selectedCustomer.createdAt ? getFormattedDate(selectedCustomer.createdAt) : '-',
+        date: activeCustomer.createdAt ? getFormattedDate(activeCustomer.createdAt) : '-',
         description: 'رصيد مرحل (افتتاحي)',
         debit: initialBalance > 0 ? initialBalance : 0,
         credit: initialBalance < 0 ? Math.abs(initialBalance) : 0,
@@ -152,15 +191,15 @@ export default function Customers() {
     }
 
     transactions.forEach(inv => {
-      const isPayment = inv.items.length === 0;
-      const isInit = inv.invoiceNumber.startsWith('INIT-') || (inv.items.length === 1 && (inv.items[0]?.name === 'رصيد مرحل (افتتاحي)' || (inv.items[0] as any)?.itemName === 'رصيد مرحل (افتتاحي)'));
-      const debit = inv.total;
-      const credit = inv.paid;
+      const isPayment = inv.invoiceNumber.startsWith('PAY-') || !inv.items || inv.items.length === 0;
+      const isInit = inv.invoiceNumber.startsWith('INIT-') || (inv.items && inv.items.length === 1 && (inv.items[0]?.name === 'رصيد مرحل (افتتاحي)' || (inv.items[0] as any)?.itemName === 'رصيد مرحل (افتتاحي)'));
+      const debit = Number(inv.total || 0);
+      const credit = Number(inv.paid || 0);
       
       currentBalance += (debit - credit);
 
       let invoiceDetails = '';
-      if (!isPayment && !isInit && inv.items.length > 0) {
+      if (!isPayment && !isInit && inv.items && inv.items.length > 0) {
         const itemNames = inv.items.map((item: any) => {
           const inventoryItem = inventory.find(i => i.id === item.itemId || i.id === item.id);
           const name = item.name || item.itemName || inventoryItem?.name || item.description || 'صنف';
@@ -169,12 +208,12 @@ export default function Customers() {
         invoiceDetails = ` - أصناف: ${itemNames.join('، ')}`;
       }
 
-      const invNumDisplay = inv.invoiceNumber.startsWith('SA-') ? inv.invoiceNumber : `SA-${inv.invoiceNumber}`;
+      const invNumDisplay = inv.invoiceNumber.startsWith('SA-') || inv.invoiceNumber.startsWith('PAY-') ? inv.invoiceNumber : `SA-${inv.invoiceNumber}`;
 
       entries.push({
         id: inv.id,
         date: new Date(inv.date).toLocaleDateString('ar-EG'),
-        description: isInit ? 'رصيد مرحل (افتتاحي)' : (isPayment ? `دفعة نقدية مسددة` : `فاتورة مبيعات ${invNumDisplay}${invoiceDetails}`),
+        description: isInit ? 'رصيد مرحل (افتتاحي)' : (isPayment ? `سند قبض / تحصيل نقدية (#${inv.invoiceNumber})` : `فاتورة مبيعات ${invNumDisplay}${invoiceDetails}`),
         debit: debit,
         credit: credit,
         balance: currentBalance,
@@ -183,7 +222,7 @@ export default function Customers() {
     });
 
     return entries;
-  }, [selectedCustomer, invoices, inventory]);
+  }, [activeCustomer, invoices, inventory]);
 
   const handlePrintStatement = () => {
     window.print();
@@ -193,13 +232,13 @@ export default function Customers() {
     let waWindow = (window as any)._waWindow;
     (window as any)._waWindow = null;
     
-    if (!selectedCustomer) {
+    if (!activeCustomer) {
       if (waWindow) waWindow.close();
       return;
     }
     
     // Check if phone number is available
-    if (!selectedCustomer.phone) {
+    if (!activeCustomer.phone) {
       if (waWindow) waWindow.close();
       alert("العميل ليس لديه رقم هاتف مسجل للمراسلة عبر واتساب.");
       return;
@@ -314,6 +353,21 @@ export default function Customers() {
     }
   };
 
+  const handleAudit = async () => {
+    setIsAuditing(true);
+    setAuditSuccessMsg(null);
+    try {
+      const res = await auditAndReconcileBalances();
+      setAuditSuccessMsg(`تم فحص وتدقيق كافة الأرصدة بنجاح (تم تحديث ${res.updatedCustomers} عميل و ${res.updatedSuppliers} مورد)`);
+      setTimeout(() => setAuditSuccessMsg(null), 4000);
+    } catch (err) {
+      console.error('Audit failed:', err);
+      alert('حدث خطأ أثناء تدقيق الأرصدة');
+    } finally {
+      setIsAuditing(false);
+    }
+  };
+
   return (
     <>
     <div className={`space-y-6 ${selectedCustomer ? 'print:hidden' : ''}`}>
@@ -322,18 +376,36 @@ export default function Customers() {
           <h2 className="text-2xl font-bold text-[#1E293B]">حسابات العملاء</h2>
           <p className="mt-1 text-sm text-[#475569]">إدارة بيانات العملاء والتفاصيل المالية وسجل المعاملات</p>
         </div>
-        <button 
-          onClick={() => {
-            setEditingCustomer(null);
-            setNewCustomer({ name: '', phone: '', balance: '', date: new Date().toISOString().split('T')[0] });
-            setIsAddModalOpen(true);
-          }}
-          className="inline-flex items-center justify-center gap-2 rounded-md bg-[#2563EB] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8] cursor-pointer"
-        >
-          <Plus className="h-4 w-4" />
-          إضافة عميل
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button 
+            onClick={handleAudit}
+            disabled={isAuditing}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-white border border-[#CBD5E1] px-3.5 py-2 text-sm font-semibold text-[#334155] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A] cursor-pointer disabled:opacity-50 shadow-xs"
+            title="فحص ومطابقة جميع أرصدة العملاء مع الفواتير والسندات تلقائياً"
+          >
+            <RefreshCw className={`h-4 w-4 text-[#2563EB] ${isAuditing ? 'animate-spin' : ''}`} />
+            <span>{isAuditing ? 'جاري التدقيق...' : 'تدقيق ومطابقة الأرصدة'}</span>
+          </button>
+          <button 
+            onClick={() => {
+              setEditingCustomer(null);
+              setNewCustomer({ name: '', phone: '', balance: '', date: new Date().toISOString().split('T')[0] });
+              setIsAddModalOpen(true);
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-[#2563EB] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8] cursor-pointer shadow-xs"
+          >
+            <Plus className="h-4 w-4" />
+            إضافة عميل
+          </button>
+        </div>
       </div>
+
+      {auditSuccessMsg && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl flex items-center gap-2 text-sm font-bold shadow-xs animate-in fade-in">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          <span>{auditSuccessMsg}</span>
+        </div>
+      )}
 
       <div>
         <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm flex flex-col">
@@ -359,106 +431,131 @@ export default function Customers() {
                 لا يوجد عملاء مطابقين للبحث
               </div>
             ) : (
-              filteredCustomers.map((customer, idx) => (
-                <div 
-                  key={customer.id ? `customer-${customer.id}` : `customer-idx-${idx}`} 
-                  className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 space-y-3 shadow-xs"
-                >
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-10 h-10 rounded-full bg-[#E2E8F0] flex items-center justify-center text-[#475569] shrink-0 font-bold">
-                        <User className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <h4 className="font-bold text-[#1E293B] text-base leading-tight">
-                            {customer.name}
-                          </h4>
-                          {customer.serialNumber && (
-                            <span className="font-mono text-[10px] font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                              #{customer.serialNumber}
-                            </span>
+              filteredCustomers.map((customer, idx) => {
+                const stats = customerFinancials.get(customer.id) || {
+                  totalInvoices: 0,
+                  totalPaid: 0,
+                  remainingDebt: Number(customer.balance || 0),
+                  invoiceCount: 0
+                };
+                const currentBalance = Number(customer.balance ?? stats.remainingDebt ?? 0);
+
+                return (
+                  <div 
+                    key={customer.id ? `customer-${customer.id}` : `customer-idx-${idx}`} 
+                    className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 space-y-3 shadow-xs"
+                  >
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-full bg-[#E2E8F0] flex items-center justify-center text-[#475569] shrink-0 font-bold">
+                          <User className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className="font-bold text-[#1E293B] text-base leading-tight">
+                              {customer.name}
+                            </h4>
+                            {customer.serialNumber && (
+                              <span className="font-mono text-[10px] font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                #{customer.serialNumber}
+                              </span>
+                            )}
+                          </div>
+                          {customer.phone && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <a 
+                                href={`tel:${customer.phone}`} 
+                                className="text-xs font-mono font-medium text-[#2563EB] hover:underline"
+                                dir="ltr"
+                              >
+                                {customer.phone}
+                              </a>
+                            </div>
                           )}
                         </div>
-                        {customer.phone && (
-                          <div className="flex items-center gap-2 mt-1">
-                            <a 
-                              href={`tel:${customer.phone}`} 
-                              className="text-xs font-mono font-medium text-[#2563EB] hover:underline"
-                              dir="ltr"
-                            >
-                              {customer.phone}
-                            </a>
-                          </div>
-                        )}
                       </div>
                     </div>
 
-                    <div className="text-left">
-                      <span className="block text-[10px] text-slate-500 font-medium">الرصيد المالي</span>
-                      <span className={`font-black text-base font-mono ${Number(customer.balance || 0) > 0 ? 'text-[#DC2626]' : Number(customer.balance || 0) < 0 ? 'text-[#16A34A]' : 'text-[#64748B]'}`}>
-                        {Number(customer.balance || 0).toLocaleString()} <span className="text-[11px] font-normal">ج.م</span>
-                      </span>
+                    {/* Financial Summary 3-Column Grid */}
+                    <div className="grid grid-cols-3 gap-1.5 bg-white p-2.5 rounded-lg border border-[#E2E8F0] text-center">
+                      <div>
+                        <span className="block text-[10px] text-slate-500 font-bold">إجمالي الفواتير</span>
+                        <span className="font-bold text-xs text-[#0F172A] font-mono block mt-0.5">
+                          {Number(stats.totalInvoices || 0).toLocaleString()} <span className="text-[9px] font-normal">ج.م</span>
+                        </span>
+                      </div>
+                      <div className="border-r border-l border-slate-100 px-1">
+                        <span className="block text-[10px] text-[#16A34A] font-bold">المدفوع</span>
+                        <span className="font-bold text-xs text-[#16A34A] font-mono block mt-0.5">
+                          {Number(stats.totalPaid || 0).toLocaleString()} <span className="text-[9px] font-normal">ج.م</span>
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-500">المتبقي / الرصيد</span>
+                        <span className={`font-black text-xs font-mono block mt-0.5 ${currentBalance > 0 ? 'text-[#DC2626]' : currentBalance < 0 ? 'text-[#16A34A]' : 'text-[#64748B]'}`}>
+                          {Number(currentBalance || 0).toLocaleString()} <span className="text-[9px] font-normal">ج.م</span>
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Actions Bar */}
-                  <div className="flex items-center justify-between pt-1 border-t border-[#E2E8F0]/70 flex-wrap gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <button 
-                        onClick={() => setSelectedCustomer(customer)}
-                        className="px-3 py-1.5 bg-[#EFF6FF] text-[#2563EB] rounded-lg font-bold text-xs hover:bg-[#DBEAFE] transition-colors border border-blue-200 flex items-center gap-1 cursor-pointer"
-                      >
-                        <History className="w-3.5 h-3.5" />
-                        <span>كشف الحساب</span>
-                      </button>
-
-                      {customer.phone && (
-                        <a
-                          href={`https://wa.me/2${customer.phone.startsWith('0') ? customer.phone.substring(1) : customer.phone}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1.5 bg-[#E6F4EA] border border-[#CEEAD6] text-[#137333] rounded-lg hover:bg-[#CEEAD6] transition-colors cursor-pointer flex items-center justify-center"
-                          title="مراسلة عبر واتساب"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                        </a>
-                      )}
-
-                      {customer.balance > 0 && (
+                    {/* Actions Bar */}
+                    <div className="flex items-center justify-between pt-1 border-t border-[#E2E8F0]/70 flex-wrap gap-2">
+                      <div className="flex items-center gap-1.5">
                         <button 
-                          onClick={() => {
-                            setPaymentCustomer(customer);
-                            setPaymentAmount(customer.balance);
-                            setPaymentDate(new Date().toISOString().split('T')[0]);
-                          }}
-                          className="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-bold text-xs hover:bg-emerald-100 transition-colors flex items-center gap-1 cursor-pointer"
+                          onClick={() => setSelectedCustomer(customer)}
+                          className="px-3 py-1.5 bg-[#EFF6FF] text-[#2563EB] rounded-lg font-bold text-xs hover:bg-[#DBEAFE] transition-colors border border-blue-200 flex items-center gap-1 cursor-pointer"
                         >
-                          <Banknote className="w-3.5 h-3.5" />
-                          <span>سداد</span>
+                          <History className="w-3.5 h-3.5" />
+                          <span>كشف الحساب</span>
                         </button>
-                      )}
-                    </div>
 
-                    <div className="flex items-center gap-1.5 mr-auto">
-                      <button 
-                        onClick={() => openEditModal(customer)}
-                        className="p-1.5 bg-white border border-[#E2E8F0] text-[#475569] rounded-lg hover:bg-[#F1F5F9] hover:text-[#2563EB] transition-colors cursor-pointer"
-                        title="تعديل"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(customer)}
-                        className="p-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg hover:bg-red-100 transition-colors cursor-pointer"
-                        title="حذف"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        {customer.phone && (
+                          <a
+                            href={`https://wa.me/2${customer.phone.startsWith('0') ? customer.phone.substring(1) : customer.phone}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 bg-[#E6F4EA] border border-[#CEEAD6] text-[#137333] rounded-lg hover:bg-[#CEEAD6] transition-colors cursor-pointer flex items-center justify-center"
+                            title="مراسلة عبر واتساب"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </a>
+                        )}
+
+                        {customer.balance > 0 && (
+                          <button 
+                            onClick={() => {
+                              setPaymentCustomer(customer);
+                              setPaymentAmount(customer.balance);
+                              setPaymentDate(new Date().toISOString().split('T')[0]);
+                            }}
+                            className="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-bold text-xs hover:bg-emerald-100 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Banknote className="w-3.5 h-3.5" />
+                            <span>سداد</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 mr-auto">
+                        <button 
+                          onClick={() => openEditModal(customer)}
+                          className="p-1.5 bg-white border border-[#E2E8F0] text-[#475569] rounded-lg hover:bg-[#F1F5F9] hover:text-[#2563EB] transition-colors cursor-pointer"
+                          title="تعديل"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(customer)}
+                          className="p-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg hover:bg-red-100 transition-colors cursor-pointer"
+                          title="حذف"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
@@ -467,101 +564,119 @@ export default function Customers() {
             <table className="w-full text-right">
               <thead className="bg-[#F7FAFC] text-xs font-bold text-[#475569] uppercase tracking-wider">
                 <tr>
-                  <th className="px-6 py-4">رقم العميل</th>
-                  <th className="px-6 py-4">اسم العميل</th>
-                  <th className="px-6 py-4">رقم الهاتف</th>
-                  <th className="px-6 py-4">الرصيد المالي الحالي (ج.م)</th>
-                  <th className="px-6 py-4 text-center">الإجراءات</th>
+                  <th className="px-5 py-4">رقم العميل</th>
+                  <th className="px-5 py-4">اسم العميل</th>
+                  <th className="px-5 py-4">رقم الهاتف</th>
+                  <th className="px-5 py-4">إجمالي الفواتير (ج.م)</th>
+                  <th className="px-5 py-4 text-[#16A34A]">المدفوع (ج.م)</th>
+                  <th className="px-5 py-4">الرصيد المتبقي (ج.م)</th>
+                  <th className="px-5 py-4 text-center">الإجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0] text-sm">
                 {filteredCustomers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-[#94A3B8]">
+                    <td colSpan={7} className="px-6 py-8 text-center text-[#94A3B8]">
                       لا يوجد عملاء مطابقين للبحث
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map((customer, idx) => (
-                    <tr 
-                      key={customer.id ? `customer-${customer.id}` : `customer-idx-${idx}`} 
-                      className="hover:bg-[#F8FAFC] transition-colors"
-                    >
-                      <td className="px-6 py-4 font-mono text-xs font-bold text-[#475569]">{customer.serialNumber}</td>
-                      <td className="px-6 py-4 font-bold text-[#1E293B]">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[#E2E8F0] flex items-center justify-center text-[#475569] overflow-hidden">
-                            <User className="w-4 h-4" />
+                  filteredCustomers.map((customer, idx) => {
+                    const stats = customerFinancials.get(customer.id) || {
+                      totalInvoices: 0,
+                      totalPaid: 0,
+                      remainingDebt: Number(customer.balance || 0),
+                      invoiceCount: 0
+                    };
+                    const currentBalance = Number(customer.balance ?? stats.remainingDebt ?? 0);
+
+                    return (
+                      <tr 
+                        key={customer.id ? `customer-${customer.id}` : `customer-idx-${idx}`} 
+                        className="hover:bg-[#F8FAFC] transition-colors"
+                      >
+                        <td className="px-5 py-4 font-mono text-xs font-bold text-[#475569]">{customer.serialNumber}</td>
+                        <td className="px-5 py-4 font-bold text-[#1E293B]">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-[#E2E8F0] flex items-center justify-center text-[#475569] overflow-hidden">
+                              <User className="w-4 h-4" />
+                            </div>
+                            {customer.name}
                           </div>
-                          {customer.name}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 font-mono text-[#475569]">{customer.phone}</td>
-                      <td className="px-6 py-4 font-bold" dir="ltr">
-                        <span className={Number(customer.balance || 0) > 0 ? 'text-[#DC2626]' : Number(customer.balance || 0) < 0 ? 'text-[#16A34A]' : 'text-[#64748B]'}>
-                          {Number(customer.balance || 0).toLocaleString()}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedCustomer(customer);
-                            }}
-                            className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-[#F1F5F9] text-[#475569] rounded-lg font-bold text-xs hover:bg-[#E2E8F0] transition-colors border-none cursor-pointer"
-                          >
-                            <History className="w-4 h-4" />
-                            السجل
-                          </button>
-                          {customer.phone && (
-                            <a
-                              href={`https://wa.me/2${customer.phone.startsWith('0') ? customer.phone.substring(1) : customer.phone}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center justify-center w-8 h-8 bg-[#E6F4EA] border border-[#CEEAD6] text-[#137333] rounded-lg hover:bg-[#CEEAD6] transition-colors cursor-pointer"
-                              title="مراسلة عبر واتساب"
-                            >
-                              <MessageCircle className="w-4 h-4" />
-                            </a>
-                          )}
-                          {customer.balance > 0 && (
+                        </td>
+                        <td className="px-5 py-4 font-mono text-[#475569]">{customer.phone || '—'}</td>
+                        <td className="px-5 py-4 font-bold font-mono text-[#1E293B]" dir="ltr">
+                          {Number(stats.totalInvoices || 0).toLocaleString()}
+                        </td>
+                        <td className="px-5 py-4 font-bold font-mono text-[#16A34A]" dir="ltr">
+                          {Number(stats.totalPaid || 0).toLocaleString()}
+                        </td>
+                        <td className="px-5 py-4 font-bold font-mono" dir="ltr">
+                          <span className={currentBalance > 0 ? 'text-[#DC2626]' : currentBalance < 0 ? 'text-[#16A34A]' : 'text-[#64748B]'}>
+                            {Number(currentBalance || 0).toLocaleString()}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setPaymentCustomer(customer);
-                                setPaymentAmount(customer.balance);
-                                setPaymentDate(new Date().toISOString().split('T')[0]);
+                                setSelectedCustomer(customer);
                               }}
-                              className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-[#EFF6FF] text-[#2563EB] rounded-lg font-bold text-xs hover:bg-[#DBEAFE] transition-colors border-none cursor-pointer"
+                              className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-[#F1F5F9] text-[#475569] rounded-lg font-bold text-xs hover:bg-[#E2E8F0] transition-colors border-none cursor-pointer"
                             >
-                              <Banknote className="w-4 h-4" />
-                              سداد 
+                              <History className="w-4 h-4" />
+                              السجل
                             </button>
-                          )}
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEditModal(customer);
-                            }}
-                            className="inline-flex items-center justify-center w-8 h-8 bg-white border border-[#E2E8F0] text-[#475569] rounded-lg hover:bg-[#F1F5F9] hover:text-[#2563EB] transition-colors cursor-pointer"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(customer);
-                            }}
-                            className="inline-flex items-center justify-center w-8 h-8 bg-white border border-[#E2E8F0] text-[#475569] rounded-lg hover:bg-[#FEE2E2] hover:text-[#DC2626] hover:border-[#FECACA] transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                            {customer.phone && (
+                              <a
+                                href={`https://wa.me/2${customer.phone.startsWith('0') ? customer.phone.substring(1) : customer.phone}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center justify-center w-8 h-8 bg-[#E6F4EA] border border-[#CEEAD6] text-[#137333] rounded-lg hover:bg-[#CEEAD6] transition-colors cursor-pointer"
+                                title="مراسلة عبر واتساب"
+                              >
+                                <MessageCircle className="w-4 h-4" />
+                              </a>
+                            )}
+                            {customer.balance > 0 && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPaymentCustomer(customer);
+                                  setPaymentAmount(customer.balance);
+                                  setPaymentDate(new Date().toISOString().split('T')[0]);
+                                }}
+                                className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-[#EFF6FF] text-[#2563EB] rounded-lg font-bold text-xs hover:bg-[#DBEAFE] transition-colors border-none cursor-pointer"
+                              >
+                                <Banknote className="w-4 h-4" />
+                                سداد 
+                              </button>
+                            )}
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditModal(customer);
+                              }}
+                              className="inline-flex items-center justify-center w-8 h-8 bg-white border border-[#E2E8F0] text-[#475569] rounded-lg hover:bg-[#F1F5F9] hover:text-[#2563EB] transition-colors cursor-pointer"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(customer);
+                              }}
+                              className="inline-flex items-center justify-center w-8 h-8 bg-white border border-[#E2E8F0] text-[#475569] rounded-lg hover:bg-[#FEE2E2] hover:text-[#DC2626] hover:border-[#FECACA] transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -582,11 +697,11 @@ export default function Customers() {
               <div className="flex items-center gap-2">
                  <button 
                    onClick={handleShareWhatsApp} 
-                   disabled={isGeneratingImage || !selectedCustomer.phone}
+                   disabled={isGeneratingImage || !activeCustomer.phone}
                    className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 bg-[#16A34A] text-white rounded-xl font-bold text-xs hover:bg-[#15803D] transition-colors border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                  >
                     {isGeneratingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
-                    <span>{!selectedCustomer.phone ? 'مشاركة (لا يوجد رقم)' : 'مشاركة واتساب'}</span>
+                    <span>{!activeCustomer.phone ? 'مشاركة (لا يوجد رقم)' : 'مشاركة واتساب'}</span>
                  </button>
                  <button onClick={handlePrintStatement} className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 bg-[#2563EB] text-white rounded-xl font-bold text-xs hover:bg-[#1D4ED8] transition-colors border-none cursor-pointer shadow-sm">
                     <Printer className="w-4 h-4" />
@@ -619,28 +734,66 @@ export default function Customers() {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center bg-[#F1F5F9] p-4 rounded-xl border border-[#E2E8F0] gap-4 print:bg-transparent print:border-none print:p-0 print:items-end print:mb-6">
-                <div className="flex items-center gap-3 text-right print:gap-2">
-                  <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#2563EB] shadow-sm print:hidden flex-shrink-0 min-w-[48px]" dir="ltr">
-                    <User className="w-6 h-6" />
+              {/* Customer Info Card & Financial Summary */}
+              {(() => {
+                const activeStats = customerFinancials.get(activeCustomer.id) || {
+                  totalInvoices: 0,
+                  totalPaid: 0,
+                  remainingDebt: Number(activeCustomer.balance || 0),
+                  invoiceCount: 0
+                };
+                const currentBal = Number(activeCustomer.balance ?? activeStats.remainingDebt ?? 0);
+
+                return (
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center bg-[#F1F5F9] p-4 rounded-xl border border-[#E2E8F0] gap-4 print:bg-transparent print:border-none print:p-0 print:mb-4">
+                      <div className="flex items-center gap-3 text-right print:gap-2">
+                        <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#2563EB] shadow-sm print:hidden flex-shrink-0 min-w-[48px]" dir="ltr">
+                          <User className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-bold text-[#1E293B] text-base sm:text-lg print:text-xl">اسم العميل: {activeCustomer.name || 'عميل'}</h3>
+                            {activeCustomer.serialNumber && (
+                              <span className="font-mono text-xs font-bold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200 print:text-black">
+                                #{activeCustomer.serialNumber}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs sm:text-sm text-[#475569] font-mono mt-0.5 print:text-[#1E293B]">
+                            الهاتف: {activeCustomer.phone || '—'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3 Summary Badges */}
+                    <div className="grid grid-cols-3 gap-3 print:grid-cols-3">
+                      <div className="bg-white p-3 sm:p-4 rounded-xl border border-[#E2E8F0] shadow-xs text-center">
+                        <span className="text-[11px] sm:text-xs font-bold text-slate-500 block mb-1">إجمالي الفواتير والتعاملات</span>
+                        <p className="text-base sm:text-xl font-black font-mono text-[#0F172A]" dir="ltr">
+                          {Number(activeStats.totalInvoices || 0).toLocaleString()} <span className="text-xs font-normal">ج.م</span>
+                        </p>
+                      </div>
+                      <div className="bg-white p-3 sm:p-4 rounded-xl border border-emerald-100 bg-emerald-50/30 shadow-xs text-center">
+                        <span className="text-[11px] sm:text-xs font-bold text-[#16A34A] block mb-1">إجمالي المبالغ المسددة</span>
+                        <p className="text-base sm:text-xl font-black font-mono text-[#16A34A]" dir="ltr">
+                          {Number(activeStats.totalPaid || 0).toLocaleString()} <span className="text-xs font-normal">ج.م</span>
+                        </p>
+                      </div>
+                      <div className={`p-3 sm:p-4 rounded-xl border shadow-xs text-center ${currentBal > 0 ? 'bg-red-50/40 border-red-200' : currentBal < 0 ? 'bg-emerald-50/40 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                        <span className="text-[11px] sm:text-xs font-bold text-[#475569] block mb-1">صافي الرصيد الحالي</span>
+                        <p className={`text-base sm:text-xl font-black font-mono ${currentBal > 0 ? 'text-[#DC2626]' : currentBal < 0 ? 'text-[#16A34A]' : 'text-[#1E293B]'}`} dir="ltr">
+                          {Math.abs(currentBal).toLocaleString()} <span className="text-xs font-normal">ج.م</span>
+                        </p>
+                        <span className="text-[10px] text-[#64748B] font-bold block mt-0.5">
+                          {currentBal > 0 ? 'مطلوب من العميل' : currentBal < 0 ? 'رصيد دائن للعميل' : 'حساب خالص (مسدد بالكامل)'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-[#1E293B] text-base sm:text-lg print:text-xl">اسم العميل: {selectedCustomer.name || 'عميل'}</h3>
-                    <p className="text-xs sm:text-sm text-[#475569] font-mono mt-0.5 print:text-[#1E293B]">
-                      تليفون : {selectedCustomer.phone || ''}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-left bg-white px-5 py-3 rounded-xl shadow-sm border border-[#E2E8F0] w-full sm:w-auto print:shadow-none print:px-4">
-                  <p className="text-xs text-[#475569] font-bold mb-1 block">الرصيد الحالي</p>
-                  <p className={`text-2xl font-black ${Number(selectedCustomer.balance || 0) > 0 ? 'text-[#DC2626]' : Number(selectedCustomer.balance || 0) < 0 ? 'text-[#16A34A]' : 'text-[#1E293B]'} print:text-black font-mono`} dir="ltr">
-                    {Math.abs(Number(selectedCustomer.balance || 0)).toLocaleString()} <span className="text-xs text-[#94A3B8] print:text-black">ج.م</span>
-                  </p>
-                  <p className="text-[11px] text-[#64748B] mt-0.5 text-center font-bold print:text-black">
-                    {Number(selectedCustomer.balance || 0) > 0 ? 'مطلوب من العميل' : Number(selectedCustomer.balance || 0) < 0 ? 'رصيد دائن للعميل' : 'حساب خالص غير مدين'}
-                  </p>
-                </div>
-              </div>
+                );
+              })()}
 
               <div className="overflow-x-auto print:overflow-visible w-full rounded-xl border border-[#E2E8F0] print:border-none">
                 <table className="w-full text-right border-collapse min-w-[620px] print:min-w-0">

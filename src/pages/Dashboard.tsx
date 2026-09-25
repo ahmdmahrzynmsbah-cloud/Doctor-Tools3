@@ -22,15 +22,21 @@ export default function Dashboard() {
     for (let i = 0; i < invoices.length; i++) {
       const inv = invoices[i];
       if (inv.date && inv.date.startsWith(todayStr)) {
-        sales += inv.total || 0;
-        debt += ((inv.total || 0) - (inv.paid || 0));
-        cash += inv.paid || 0;
+        if (inv.isQuote) continue;
+        const isPay = inv.invoiceNumber?.startsWith('PAY-') || ((!inv.items || inv.items.length === 0) && (Number(inv.total || 0) === 0));
+        if (!isPay) {
+          sales += Number(inv.total || 0);
+          debt += Math.max(0, Number(inv.total || 0) - Number(inv.paid || 0));
+          cash += Number(inv.paid || 0);
+        } else {
+          cash += Number(inv.paid || 0);
+        }
       }
     }
     
     let totalCustomerDebt = 0;
     for (let i = 0; i < customers.length; i++) {
-      totalCustomerDebt += customers[i].balance || 0;
+      totalCustomerDebt += Math.max(0, customers[i].balance || 0);
     }
 
     let lowStock = 0;
@@ -209,9 +215,13 @@ export default function Dashboard() {
                 </div>
               ) : (
                 recentInvoices.map((inv, idx) => {
+                  const isPayment = inv.invoiceNumber.startsWith('PAY-') || (!inv.isQuote && (!inv.items || inv.items.length === 0) && (Number(inv.paid || 0) > 0 || Number(inv.total || 0) === 0));
                   const customerName = inv.customCustomerName || customerMap.get(inv.customerId) || 'عميل نقدي';
-                  const isFullyPaid = inv.paid >= inv.total;
-                  const isPartiallyPaid = inv.paid > 0 && inv.paid < inv.total;
+                  const directTotal = Number(inv.total || 0);
+                  const directPaid = Number(inv.paid || 0);
+                  const displayTotal = isPayment ? directPaid : directTotal;
+                  const isFullyPaid = isPayment ? true : directPaid >= directTotal;
+                  const isPartiallyPaid = !isPayment && directPaid > 0 && directPaid < directTotal;
                   const dateStr = new Date(inv.date);
                   const formattedDate = `${dateStr.getDate().toString().padStart(2, '0')}/${(dateStr.getMonth()+1).toString().padStart(2, '0')}/${dateStr.getFullYear()}`;
 
@@ -223,9 +233,11 @@ export default function Dashboard() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-mono text-xs font-bold text-[#2180B2]">
-                            SA-{inv.invoiceNumber}
+                            #{inv.invoiceNumber}
                           </span>
-                          {isFullyPaid ? (
+                          {isPayment ? (
+                            <span className="px-1.5 py-0.5 bg-[#ECFDF5] text-[#059669] rounded text-[10px] font-bold border border-[#A7F3D0]">سند قبض</span>
+                          ) : isFullyPaid ? (
                             <span className="px-1.5 py-0.5 bg-[#F0FDF4] text-[#16A34A] rounded text-[10px] font-bold">نقدي</span>
                           ) : isPartiallyPaid ? (
                             <span className="px-1.5 py-0.5 bg-[#FFFBEB] text-[#D97706] rounded text-[10px] font-bold">جزئي</span>
@@ -243,7 +255,7 @@ export default function Dashboard() {
 
                       <div className="text-left shrink-0">
                         <span className="font-black text-sm text-[#1E293B] font-mono block">
-                          {Number(inv.total || 0).toLocaleString()} <span className="text-[10px] font-normal text-[#94A3B8]">ج.م</span>
+                          {Number(displayTotal || 0).toLocaleString()} <span className="text-[10px] font-normal text-[#94A3B8]">ج.م</span>
                         </span>
                         <Link 
                           to="/invoices" 
@@ -258,53 +270,101 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Desktop View: Table */}
-            <div className="hidden md:block overflow-x-auto">
-               <table className="w-full text-sm text-right">
-                  <thead className="bg-[#white] text-[#94A3B8]">
-                     <tr>
-                        <th className="py-4 px-6 font-bold whitespace-nowrap">رقم الفاتورة</th>
-                        <th className="py-4 px-6 font-bold whitespace-nowrap">العميل</th>
-                        <th className="py-4 px-6 font-bold whitespace-nowrap">التاريخ</th>
-                        <th className="py-4 px-6 font-bold text-center whitespace-nowrap">طريقة الدفع</th>
-                        <th className="py-4 px-6 font-bold text-left whitespace-nowrap">المبلغ الإجمالي</th>
-                     </tr>
-                  </thead>
-                   <tbody className="divide-y divide-[#F1F5F9]">
-                     {recentInvoices.map((inv, idx) => {
-                       const customerName = inv.customCustomerName || customerMap.get(inv.customerId) || 'عميل نقدي';
-                       const isFullyPaid = inv.paid >= inv.total;
-                       const isPartiallyPaid = inv.paid > 0 && inv.paid < inv.total;
-                       const dateStr = new Date(inv.date);
-                       
-                       const formattedDate = `${dateStr.getHours().toString().padStart(2, '0')}:${dateStr.getMinutes().toString().padStart(2, '0')} ${dateStr.getDate().toString().padStart(2, '0')}/${(dateStr.getMonth()+1).toString().padStart(2, '0')}/${dateStr.getFullYear()}`;
+             {/* Desktop View: Table */}
+             <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm text-right">
+                   <thead className="bg-[#white] text-[#94A3B8]">
+                      <tr>
+                         <th className="py-4 px-5 font-bold whitespace-nowrap">رقم الفاتورة</th>
+                         <th className="py-4 px-5 font-bold whitespace-nowrap">العميل</th>
+                         <th className="py-4 px-5 font-bold whitespace-nowrap">التاريخ</th>
+                         <th className="py-4 px-5 font-bold text-center whitespace-nowrap">طريقة الدفع</th>
+                         <th className="py-4 px-5 font-bold whitespace-nowrap">إجمالي الفاتورة</th>
+                         <th className="py-4 px-5 font-bold whitespace-nowrap text-[#16A34A]">المدفوع</th>
+                         <th className="py-4 px-5 font-bold text-left whitespace-nowrap">المتبقي بذمة العميل</th>
+                      </tr>
+                   </thead>
+                    <tbody className="divide-y divide-[#F1F5F9]">
+                      {recentInvoices.map((inv, idx) => {
+                        const isPayment = inv.invoiceNumber.startsWith('PAY-') || (!inv.isQuote && (!inv.items || inv.items.length === 0) && (Number(inv.paid || 0) > 0 || Number(inv.total || 0) === 0));
+                        const customer = customers.find(c => c.id === inv.customerId);
+                        const customerName = inv.customCustomerName || (customer?.name) || customerMap.get(inv.customerId) || 'عميل نقدي';
 
-                       return (
-                         <tr key={inv.id ? `recent-inv-${inv.id}` : `recent-inv-idx-${idx}`} className="hover:bg-[#F8FAFC] transition-colors">
-                           <td className="py-4 px-6 font-bold text-[#1E293B]">SA-{inv.invoiceNumber}</td>
-                           <td className="py-4 px-6 font-bold text-[#1E293B]">{customerName}</td>
-                           <td className="py-4 px-6 text-[#94A3B8] font-mono text-right" dir="ltr">{formattedDate}</td>
-                           <td className="py-4 px-6 text-center">
-                             {isFullyPaid ? (
-                               <span className="px-3 py-1 bg-[#F0FDF4] text-[#16A34A] rounded-lg text-xs font-bold">نقدي</span>
-                             ) : isPartiallyPaid ? (
-                               <span className="px-3 py-1 bg-[#FFFBEB] text-[#D97706] rounded-lg text-xs font-bold">جزئي</span>
-                             ) : (
-                               <span className="px-3 py-1 bg-[#FEF2F2] text-[#DC2626] rounded-lg text-xs font-bold">آجل</span>
-                             )}
-                           </td>
-                           <td className="py-4 px-6 font-black text-[#1E293B] text-left">{inv.total} <span className="text-xs font-bold text-[#94A3B8]">ج.م</span></td>
-                         </tr>
-                       );
-                     })}
-                     {recentInvoices.length === 0 && (
-                       <tr>
-                         <td colSpan={5} className="py-8 text-center text-[#94A3B8]">لا توجد فواتير صادرة مؤخراً.</td>
-                       </tr>
-                     )}
-                  </tbody>
-               </table>
-            </div>
+                        const customerInvoices = invoices.filter(i => i.customerId === inv.customerId && !i.isQuote && !i.invoiceNumber.startsWith('PAY-') && ((i.items && i.items.length > 0) || Number(i.total || 0) > 0));
+                        const customerTotalInvoices = customerInvoices.reduce((acc, i) => acc + Number(i.total || 0), 0);
+                        const customerPayments = invoices.filter(i => i.customerId === inv.customerId && !i.isQuote);
+                        const customerTotalPaid = customerPayments.reduce((acc, i) => acc + Number(i.paid || 0), 0);
+                        const customerBalance = Number(customer?.balance ?? Math.max(0, customerTotalInvoices - customerTotalPaid));
+
+                        const directTotal = Number(inv.total || 0);
+                        const directPaid = Number(inv.paid || 0);
+
+                        const displayTotal = isPayment ? directPaid : directTotal;
+                        const displayPaid = directPaid;
+                        const displayRemaining = customer ? customerBalance : Math.max(0, directTotal - directPaid);
+
+                        const isFullyPaid = isPayment ? true : (displayPaid >= displayTotal && displayTotal > 0);
+                        const isPartiallyPaid = !isPayment && displayPaid > 0 && displayPaid < displayTotal;
+
+                        const dateStr = new Date(inv.date);
+                        const formattedDate = `${dateStr.getHours().toString().padStart(2, '0')}:${dateStr.getMinutes().toString().padStart(2, '0')} ${dateStr.getDate().toString().padStart(2, '0')}/${(dateStr.getMonth()+1).toString().padStart(2, '0')}/${dateStr.getFullYear()}`;
+
+                        return (
+                          <tr key={inv.id ? `recent-inv-${inv.id}` : `recent-inv-idx-${idx}`} className="hover:bg-[#F8FAFC] transition-colors">
+                            <td className="py-4 px-5 font-bold text-[#1E293B]">
+                              <div className="flex items-center gap-1.5">
+                                <span>#{inv.invoiceNumber}</span>
+                                {isPayment && (
+                                  <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-sans border border-emerald-200">سند قبض</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-4 px-5 font-bold text-[#1E293B]">{customerName}</td>
+                            <td className="py-4 px-5 text-[#94A3B8] font-mono text-right" dir="ltr">{formattedDate}</td>
+                            <td className="py-4 px-5 text-center">
+                              {isPayment ? (
+                                <span className="px-3 py-1 bg-[#ECFDF5] text-[#059669] rounded-lg text-xs font-bold border border-[#A7F3D0]">سند قبض</span>
+                              ) : isFullyPaid ? (
+                                <span className="px-3 py-1 bg-[#F0FDF4] text-[#16A34A] rounded-lg text-xs font-bold">نقدي</span>
+                              ) : isPartiallyPaid ? (
+                                <span className="px-3 py-1 bg-[#FFFBEB] text-[#D97706] rounded-lg text-xs font-bold">جزئي</span>
+                              ) : (
+                                <span className="px-3 py-1 bg-[#FEF2F2] text-[#DC2626] rounded-lg text-xs font-bold">آجل</span>
+                              )}
+                            </td>
+                            <td className="py-4 px-5 font-black text-[#1E293B] font-mono">
+                              <div>
+                                <span>{Number(displayTotal || 0).toLocaleString()} <span className="text-xs font-bold text-[#94A3B8]">ج.م</span></span>
+                                {isPayment && <span className="block text-[10px] text-slate-400 font-normal">قيمة السند</span>}
+                              </div>
+                            </td>
+                            <td className="py-4 px-5 font-bold text-[#16A34A] font-mono">
+                              <div>
+                                <span>{Number(displayPaid || 0).toLocaleString()} <span className="text-xs font-bold text-[#94A3B8]">ج.م</span></span>
+                                {isPayment && <span className="block text-[10px] text-emerald-600 font-normal">محصل بالسند</span>}
+                              </div>
+                            </td>
+                            <td className="py-4 px-5 font-bold text-left font-mono">
+                              <div>
+                                <span className={displayRemaining > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}>
+                                  {Number(displayRemaining).toLocaleString()} <span className="text-xs font-bold text-[#94A3B8]">ج.م</span>
+                                </span>
+                                <span className="block text-[10px] text-slate-400 font-normal">
+                                  {displayRemaining > 0 ? 'متبقي على العميل' : 'خالص'}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {recentInvoices.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="py-8 text-center text-[#94A3B8]">لا توجد فواتير صادرة مؤخراً.</td>
+                        </tr>
+                      )}
+                   </tbody>
+                </table>
+             </div>
          </div>
 
          <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-sm flex flex-col items-center justify-center min-h-[300px] relative overflow-hidden text-center col-span-1 border-dashed">

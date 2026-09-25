@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useMemo, useEffect, useCallback, useRef } from 'react';
 import { db } from '../lib/firebase';
-import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, increment } from 'firebase/firestore';
 
 enum OperationType {
   CREATE = 'create',
@@ -371,6 +371,7 @@ type AppDataContextType = {
   createPurchase: (purchase: Omit<PurchaseOrder, 'id'>) => Promise<void>;
   recordCustomerPayment: (customerId: string, amount: number, paymentDate?: string) => Promise<void>;
   recordSupplierPayment: (supplierId: string, amount: number, paymentDate?: string) => Promise<void>;
+  auditAndReconcileBalances: () => Promise<{ updatedCustomers: number; updatedSuppliers: number }>;
   
   markAllNotificationsRead: () => Promise<void>;
   updateBusinessProfile: (profile: BusinessProfile) => Promise<void>;
@@ -417,7 +418,29 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   
   const [invoices, setInvoices] = useState<Invoice[]>(() => {
     const raw = scanStorageForItems<Invoice[]>('doctor_tools_invoices', invoicesLegacyKeys, isInvoice, []);
-    const list = toSafeArray<Invoice>(raw);
+    const list = toSafeArray<Invoice>(raw).map((inv: any) => {
+      const items = Array.isArray(inv.items) ? inv.items.map((item: any) => {
+        let price = item.price;
+        if (price === undefined || price === null || price === 0) {
+          if (item.sellPrice !== undefined && item.sellPrice !== null && item.sellPrice !== 0) {
+            price = Number(item.sellPrice);
+          } else if (item.unitPrice !== undefined && item.unitPrice !== null && item.unitPrice !== 0) {
+            price = Number(item.unitPrice);
+          } else if (item.total && item.quantity) {
+            price = Number(item.total) / Number(item.quantity);
+          } else if (inv.items && inv.items.length === 1 && inv.total) {
+            price = Number(inv.total) / Number(item.quantity || 1);
+          }
+        }
+        return {
+          ...item,
+          itemId: item.itemId || item.id || '',
+          quantity: Number(item.quantity || item.qty || 1),
+          price: Number(price || 0)
+        };
+      }) : [];
+      return { ...inv, items } as Invoice;
+    });
     return [...list].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
   });
   
@@ -572,7 +595,30 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         setSyncStatus('synced');
         setLastSyncTime(new Date());
-        const list = snap.docs.map(d => ({ ...d.data(), id: d.id } as Invoice)).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+        const list = snap.docs.map(d => {
+          const raw = d.data() as any;
+          const items = Array.isArray(raw.items) ? raw.items.map((item: any) => {
+            let price = item.price;
+            if (price === undefined || price === null || price === 0) {
+              if (item.sellPrice !== undefined && item.sellPrice !== null && item.sellPrice !== 0) {
+                price = Number(item.sellPrice);
+              } else if (item.unitPrice !== undefined && item.unitPrice !== null && item.unitPrice !== 0) {
+                price = Number(item.unitPrice);
+              } else if (item.total && item.quantity) {
+                price = Number(item.total) / Number(item.quantity);
+              } else if (raw.items.length === 1 && raw.total) {
+                price = Number(raw.total) / Number(item.quantity || 1);
+              }
+            }
+            return {
+              ...item,
+              itemId: item.itemId || item.id || '',
+              quantity: Number(item.quantity || item.qty || 1),
+              price: Number(price || 0)
+            };
+          }) : [];
+          return { ...raw, items, id: d.id } as Invoice;
+        }).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
         setInvoices(list);
         saveStorageDebounced('doctor_tools_invoices', list, 0);
       }, (e) => {
@@ -871,7 +917,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         setCustomers(prev => {
           const updated = prev.map(c => {
             if (c.id === invoice.customerId) {
-              return { ...c, balance: c.balance + remaining, updatedAt: Date.now() };
+              return { ...c, balance: (c.balance || 0) + remaining, updatedAt: Date.now() };
             }
             return c;
           });
@@ -897,16 +943,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         const remaining = invoice.total - invoice.paid;
         if (remaining !== 0 && invoice.customerId) {
           const custRef = doc(db, 'users', uid, 'customers', invoice.customerId);
-          const currentCust = customers.find(c => c.id === invoice.customerId);
-          if (currentCust) {
-            batch.update(custRef, { balance: currentCust.balance + remaining, updatedAt: Date.now() });
-          }
+          batch.set(custRef, { balance: increment(remaining), updatedAt: Date.now() }, { merge: true });
         }
       }
       
       await batch.commit();
     }, `invoices/${newId}`);
-  }, [customers, inventory, invoices, uid]);
+  }, [inventory, invoices, uid]);
 
   const updateInvoice = useCallback(async (id: string, invoice: Omit<Invoice, 'id' | 'invoiceNumber'>) => {
     const existingInvoice = invoices.find(inv => inv.id === id);
@@ -941,13 +984,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         setCustomers(prev => {
           const updated = prev.map(c => {
             if (c.id === existingInvoice.customerId && existingInvoice.customerId === invoice.customerId) {
-              return { ...c, balance: c.balance - oldRemaining + newRemaining, updatedAt: Date.now() };
+              return { ...c, balance: (c.balance || 0) - oldRemaining + newRemaining, updatedAt: Date.now() };
             }
             if (c.id === existingInvoice.customerId) {
-              return { ...c, balance: c.balance - oldRemaining, updatedAt: Date.now() };
+              return { ...c, balance: (c.balance || 0) - oldRemaining, updatedAt: Date.now() };
             }
             if (c.id === invoice.customerId) {
-              return { ...c, balance: c.balance + newRemaining, updatedAt: Date.now() };
+              return { ...c, balance: (c.balance || 0) + newRemaining, updatedAt: Date.now() };
             }
             return c;
           });
@@ -987,24 +1030,27 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         
         if (existingInvoice.customerId && invoice.customerId) {
           if (existingInvoice.customerId === invoice.customerId) {
-              const custRef = doc(db, 'users', uid, 'customers', existingInvoice.customerId);
-              const cust = customers.find(c => c.id === existingInvoice.customerId);
-              if (cust) batch.update(custRef, { balance: cust.balance - oldRemaining + newRemaining, updatedAt: Date.now() });
+              const diff = newRemaining - oldRemaining;
+              if (diff !== 0) {
+                const custRef = doc(db, 'users', uid, 'customers', existingInvoice.customerId);
+                batch.set(custRef, { balance: increment(diff), updatedAt: Date.now() }, { merge: true });
+              }
           } else {
-              const oldCustRef = doc(db, 'users', uid, 'customers', existingInvoice.customerId);
-              const oldCust = customers.find(c => c.id === existingInvoice.customerId);
-              if (oldCust) batch.update(oldCustRef, { balance: oldCust.balance - oldRemaining, updatedAt: Date.now() });
-
-              const newCustRef = doc(db, 'users', uid, 'customers', invoice.customerId);
-              const newCust = customers.find(c => c.id === invoice.customerId);
-              if (newCust) batch.update(newCustRef, { balance: newCust.balance + newRemaining, updatedAt: Date.now() });
+              if (oldRemaining !== 0) {
+                const oldCustRef = doc(db, 'users', uid, 'customers', existingInvoice.customerId);
+                batch.set(oldCustRef, { balance: increment(-oldRemaining), updatedAt: Date.now() }, { merge: true });
+              }
+              if (newRemaining !== 0) {
+                const newCustRef = doc(db, 'users', uid, 'customers', invoice.customerId);
+                batch.set(newCustRef, { balance: increment(newRemaining), updatedAt: Date.now() }, { merge: true });
+              }
           }
         }
       }
 
       await batch.commit();
     }, `invoices/${id}`);
-  }, [customers, inventory, invoices, uid]);
+  }, [inventory, invoices, uid]);
 
   const deleteInvoice = useCallback(async (id: string) => {
     const invToDelete = invoices.find(inv => inv.id === id);
@@ -1034,7 +1080,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         setCustomers(prev => {
           const updated = prev.map(c => {
             if (c.id === invToDelete.customerId) {
-              return { ...c, balance: c.balance - remaining, updatedAt: Date.now() };
+              return { ...c, balance: (c.balance || 0) - remaining, updatedAt: Date.now() };
             }
             return c;
           });
@@ -1060,14 +1106,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         const remaining = invToDelete.total - invToDelete.paid;
         if (remaining !== 0 && invToDelete.customerId) {
           const custRef = doc(db, 'users', uid, 'customers', invToDelete.customerId);
-          const cust = customers.find(c => c.id === invToDelete.customerId);
-          if (cust) batch.update(custRef, { balance: cust.balance - remaining, updatedAt: Date.now() });
+          batch.set(custRef, { balance: increment(-remaining), updatedAt: Date.now() }, { merge: true });
         }
       }
 
       await batch.commit();
     }, `invoices/${id}`, OperationType.DELETE);
-  }, [customers, inventory, invoices, uid]);
+  }, [inventory, invoices, uid]);
 
   const createPurchase = useCallback(async (purchase: Omit<PurchaseOrder, 'id'>) => {
     const newRef = doc(collection(db, 'users', uid, 'purchases'));
@@ -1103,7 +1148,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setSuppliers(prev => {
         const updated = prev.map(s => {
           if (s.id === purchase.supplierId) {
-            return { ...s, balance: s.balance + remaining, updatedAt: Date.now() };
+            return { ...s, balance: (s.balance || 0) + remaining, updatedAt: Date.now() };
           }
           return s;
         });
@@ -1126,15 +1171,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
       if (remaining !== 0) {
         const supRef = doc(db, 'users', uid, 'suppliers', purchase.supplierId);
-        const sup = suppliers.find(s => s.id === purchase.supplierId);
-        if (sup) {
-          batch.update(supRef, { balance: sup.balance + remaining, updatedAt: Date.now() });
-        }
+        batch.set(supRef, { balance: increment(remaining), updatedAt: Date.now() }, { merge: true });
       }
       
       await batch.commit();
     }, `purchases/${newId}`);
-  }, [inventory, suppliers, uid]);
+  }, [inventory, uid]);
 
   const recordCustomerPayment = useCallback(async (customerId: string, amount: number, paymentDate?: string) => {
     if (amount <= 0) return;
@@ -1163,7 +1205,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       return updated;
     });
     setCustomers(prev => {
-      const updated = prev.map(c => c.id === customerId ? { ...c, balance: c.balance - amount, updatedAt: Date.now() } : c);
+      const updated = prev.map(c => c.id === customerId ? { ...c, balance: (c.balance || 0) - amount, updatedAt: Date.now() } : c);
       try { localStorage.setItem('doctor_tools_customers', JSON.stringify(updated)); } catch {}
       return updated;
     });
@@ -1183,14 +1225,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       });
 
       const custRef = doc(db, 'users', uid, 'customers', customerId);
-      const cust = customers.find(c => c.id === customerId);
-      if (cust) {
-        batch.update(custRef, { balance: cust.balance - amount, updatedAt: Date.now() });
-      }
+      batch.set(custRef, { balance: increment(-amount), updatedAt: Date.now() }, { merge: true });
 
       await batch.commit();
     }, `invoices/${newId}`);
-  }, [customers, invoices.length, uid]);
+  }, [invoices.length, uid]);
 
   const recordSupplierPayment = useCallback(async (supplierId: string, amount: number, paymentDate?: string) => {
     if (amount <= 0) return;
@@ -1217,7 +1256,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       return updated;
     });
     setSuppliers(prev => {
-      const updated = prev.map(s => s.id === supplierId ? { ...s, balance: s.balance - amount, updatedAt: Date.now() } : s);
+      const updated = prev.map(s => s.id === supplierId ? { ...s, balance: (s.balance || 0) - amount, updatedAt: Date.now() } : s);
       try { localStorage.setItem('doctor_tools_suppliers', JSON.stringify(updated)); } catch {}
       return updated;
     });
@@ -1236,14 +1275,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       });
 
       const supRef = doc(db, 'users', uid, 'suppliers', supplierId);
-      const sup = suppliers.find(s => s.id === supplierId);
-      if (sup) {
-        batch.update(supRef, { balance: sup.balance - amount, updatedAt: Date.now() });
-      }
+      batch.set(supRef, { balance: increment(-amount), updatedAt: Date.now() }, { merge: true });
 
       await batch.commit();
     }, `purchases/${newId}`);
-  }, [suppliers, uid]);
+  }, [uid]);
 
   const markAllNotificationsRead = useCallback(async () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true, updatedAt: Date.now() })));
@@ -1279,6 +1315,96 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       await setDoc(doc(db, 'users', uid, 'profile', 'businessProfile'), dataToSave);
     }, 'profile/businessProfile');
   }, [businessProfile.createdAt, uid]);
+
+  const auditAndReconcileBalances = useCallback(async () => {
+    let updatedCustomers = 0;
+    let updatedSuppliers = 0;
+
+    const currentCusts = [...customersRef.current];
+    const currentInvs = [...invoicesRef.current];
+    const currentSups = [...suppliersRef.current];
+    const currentPurs = [...purchasesRef.current];
+
+    const customerUpdates: Customer[] = [];
+    const supplierUpdates: Supplier[] = [];
+
+    // Reconcile Customers
+    currentCusts.forEach(c => {
+      const cInvoices = currentInvs.filter(i => i.customerId === c.id && !i.isQuote);
+      const salesInvs = cInvoices.filter(i => !i.invoiceNumber.startsWith('PAY-') && ((i.items && i.items.length > 0) || Number(i.total || 0) > 0));
+      const payInvs = cInvoices.filter(i => i.invoiceNumber.startsWith('PAY-') || (!i.items || i.items.length === 0));
+
+      const salesTotal = salesInvs.reduce((acc, i) => acc + Number(i.total || 0), 0);
+      const directPaid = salesInvs.reduce((acc, i) => acc + Number(i.paid || 0), 0);
+      const vouchersPaid = payInvs.reduce((acc, i) => acc + Number(i.paid || 0), 0);
+      const totalPaid = directPaid + vouchersPaid;
+      
+      const currentStoredBalance = Number(c.balance || 0);
+      const netTransChange = salesTotal - totalPaid;
+      const initialOpeningBalance = currentStoredBalance - netTransChange;
+      
+      let accurateBalance = netTransChange;
+      if (initialOpeningBalance > 0 && cInvoices.length > 0) {
+        accurateBalance = netTransChange + initialOpeningBalance;
+      } else if (cInvoices.length === 0) {
+        accurateBalance = currentStoredBalance;
+      }
+
+      if (currentStoredBalance !== accurateBalance) {
+        customerUpdates.push({ ...c, balance: accurateBalance, updatedAt: Date.now() });
+        updatedCustomers++;
+      }
+    });
+
+    // Reconcile Suppliers
+    currentSups.forEach(s => {
+      const sPurs = currentPurs.filter(p => p.supplierId === s.id);
+      const purTotal = sPurs.reduce((acc, p) => acc + Number(p.total || 0), 0);
+      const purPaid = sPurs.reduce((acc, p) => acc + Number(p.paid || 0), 0);
+      const accurateSupBalance = purTotal - purPaid;
+
+      if (Number(s.balance || 0) !== accurateSupBalance && sPurs.length > 0) {
+        supplierUpdates.push({ ...s, balance: accurateSupBalance, updatedAt: Date.now() });
+        updatedSuppliers++;
+      }
+    });
+
+    if (customerUpdates.length > 0) {
+      setCustomers(prev => {
+        const updateMap = new Map(customerUpdates.map(u => [u.id, u.balance]));
+        const updated = prev.map(c => updateMap.has(c.id) ? { ...c, balance: updateMap.get(c.id)!, updatedAt: Date.now() } : c);
+        try { localStorage.setItem('doctor_tools_customers', JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+
+      safeFirestoreOperation(async () => {
+        const batch = writeBatch(db);
+        customerUpdates.forEach(u => {
+          batch.set(doc(db, 'users', uid, 'customers', u.id), { balance: u.balance, updatedAt: Date.now() }, { merge: true });
+        });
+        await batch.commit();
+      }, 'customers/batchReconcile');
+    }
+
+    if (supplierUpdates.length > 0) {
+      setSuppliers(prev => {
+        const updateMap = new Map(supplierUpdates.map(u => [u.id, u.balance]));
+        const updated = prev.map(s => updateMap.has(s.id) ? { ...s, balance: updateMap.get(s.id)!, updatedAt: Date.now() } : s);
+        try { localStorage.setItem('doctor_tools_suppliers', JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+
+      safeFirestoreOperation(async () => {
+        const batch = writeBatch(db);
+        supplierUpdates.forEach(u => {
+          batch.set(doc(db, 'users', uid, 'suppliers', u.id), { balance: u.balance, updatedAt: Date.now() }, { merge: true });
+        });
+        await batch.commit();
+      }, 'suppliers/batchReconcile');
+    }
+
+    return { updatedCustomers, updatedSuppliers };
+  }, [uid]);
 
   const scanAndRecoverBrowserData = useCallback(() => {
     let recItems = 0;
@@ -1540,6 +1666,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     createPurchase,
     recordCustomerPayment,
     recordSupplierPayment,
+    auditAndReconcileBalances,
     markAllNotificationsRead,
     updateBusinessProfile
   }), [
@@ -1576,6 +1703,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     createPurchase,
     recordCustomerPayment,
     recordSupplierPayment,
+    auditAndReconcileBalances,
     markAllNotificationsRead,
     updateBusinessProfile
   ]);

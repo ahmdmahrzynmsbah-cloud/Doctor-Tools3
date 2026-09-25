@@ -326,7 +326,6 @@ export default function Invoices() {
       setPaidAmount(finalTotal);
     } else if (paymentMethod === 'deferred') {
       setPaidAmount(0);
-    setInvoiceDate(new Date().toISOString().split('T')[0]);
     }
   }, [paymentMethod, finalTotal]);
 
@@ -371,7 +370,23 @@ export default function Invoices() {
         setCustomerPhoneInput('');
       }
     }
-    setInvoiceItems(inv.items.map(item => ({ inventoryId: item.itemId, qty: item.quantity, price: item.price })));
+    setInvoiceItems(inv.items.map(item => {
+      let price = item.price;
+      if (!price) {
+        if ((item as any).sellPrice) price = Number((item as any).sellPrice);
+        else if ((item as any).unitPrice) price = Number((item as any).unitPrice);
+        else if ((item as any).total && item.quantity) price = Number((item as any).total) / Number(item.quantity);
+        else {
+          const found = inventory.find(i => i.id === item.itemId || i.id === (item as any).id);
+          if (found) price = found.sellPrice;
+        }
+      }
+      return { 
+        inventoryId: item.itemId || (item as any).id, 
+        qty: item.quantity || (item as any).qty || 1, 
+        price: Number(price || 0) 
+      };
+    }));
     setDiscountValue(inv.discountValue || 0);
     setDiscountType(inv.discountType || 'percentage');
     
@@ -588,6 +603,7 @@ export default function Invoices() {
               customer={printingCustomer} 
               inventory={inventory} 
               profile={businessProfile} 
+              allInvoices={invoices}
             />
           </div>
         </div>
@@ -788,15 +804,55 @@ export default function Invoices() {
                       </div>
 
                       {paymentMethod === 'partial' && (
-                        <div className="mt-2">
-                          <label className="text-xs font-bold text-[#475569] block mb-1">المبلغ المدفوع (المحصل الآن)</label>
-                          <input 
-                             type="number" min="0" max={finalTotal} required
-                             value={paidAmount} onChange={e => setPaidAmount(Number(e.target.value))}
-                             className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2180B2] focus:outline-none"
-                           />
+                        <div className="mt-2 bg-[#FFFBEB] p-3 rounded-xl border border-[#FDE68A]">
+                          <label className="text-xs font-bold text-[#92400E] block mb-1">المبلغ المدفوع الآن (المحصل)</label>
+                          <div className="relative">
+                            <input 
+                              type="number" min="0" max={finalTotal} required
+                              value={paidAmount} onChange={e => setPaidAmount(Number(e.target.value))}
+                              className="w-full border border-[#FCD34D] rounded-lg px-3 py-2 text-sm font-bold text-[#1E293B] focus:ring-2 focus:ring-[#D97706] focus:outline-none bg-white"
+                              dir="ltr"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#92400E] pointer-events-none">ج.م</span>
+                          </div>
                         </div>
                       )}
+
+                      {/* ملخص الحساب المالي للفاتورة */}
+                      <div className="mt-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3.5 space-y-2.5">
+                        <div className="flex justify-between items-center text-xs font-bold text-[#475569]">
+                          <span>إجمالي الفاتورة:</span>
+                          <span className="font-mono text-sm text-[#0F172A]" dir="ltr">
+                            {Number(finalTotal || 0).toLocaleString()} ج.م
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs font-bold text-[#16A34A] border-t border-[#E2E8F0] pt-2">
+                          <span>المبلغ المدفوع:</span>
+                          <span className="font-mono text-sm text-[#16A34A]" dir="ltr">
+                            {Number(paidAmount || 0).toLocaleString()} ج.م
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs font-black border-t border-[#E2E8F0] pt-2">
+                          <span className={finalTotal - paidAmount > 0 ? 'text-[#DC2626]' : 'text-[#0D9488]'}>
+                            المبلغ المتبقي:
+                          </span>
+                          <div className="font-mono text-base font-black inline-flex items-center gap-1" dir="ltr">
+                            <span className={finalTotal - paidAmount > 0 ? 'text-[#DC2626]' : 'text-[#0D9488]'}>
+                              {Number(Math.max(0, finalTotal - paidAmount) || 0).toLocaleString()}
+                            </span>
+                            <span className="text-xs font-bold text-[#64748B]">ج.م</span>
+                          </div>
+                        </div>
+                        {finalTotal - paidAmount > 0 ? (
+                          <p className="text-[10px] text-[#DC2626] font-bold bg-[#FEF2F2] p-1.5 rounded text-center border border-[#FECACA]">
+                            يتم ترحيل المتبقي ({Number(finalTotal - paidAmount).toLocaleString()} ج.م) على رصيد العميل
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-[#16A34A] font-bold bg-[#F0FDF4] p-1.5 rounded text-center border border-[#BBF7D0]">
+                            تم سداد كامل قيمة الفاتورة بنجاح
+                          </p>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div className="pt-4 px-4 py-3 bg-[#FFFDF5] text-[#D97706] border border-[#FDE68A] rounded-xl text-xs font-semibold leading-relaxed">
@@ -1004,10 +1060,24 @@ export default function Invoices() {
                 </div>
               ) : (
                 filteredInvoices.map((inv, idx) => {
+                  const isPayment = inv.invoiceNumber.startsWith('PAY-') || (!inv.isQuote && (!inv.items || inv.items.length === 0) && (Number(inv.paid || 0) > 0 || Number(inv.total || 0) === 0));
                   const customer = customers.find(c => c.id === inv.customerId);
-                  const isFullyPaid = inv.paid >= inv.total;
                   const customerName = inv.isQuote && inv.customCustomerName ? inv.customCustomerName : (customer?.name || 'عميل نقدي');
-                  const remaining = Math.max(0, inv.total - inv.paid);
+
+                  const customerInvoices = invoices.filter(i => i.customerId === inv.customerId && !i.isQuote && !i.invoiceNumber.startsWith('PAY-') && ((i.items && i.items.length > 0) || Number(i.total || 0) > 0));
+                  const customerTotalInvoices = customerInvoices.reduce((acc, i) => acc + Number(i.total || 0), 0);
+                  const customerPayments = invoices.filter(i => i.customerId === inv.customerId && !i.isQuote);
+                  const customerTotalPaid = customerPayments.reduce((acc, i) => acc + Number(i.paid || 0), 0);
+                  const customerBalance = Number(customer?.balance ?? Math.max(0, customerTotalInvoices - customerTotalPaid));
+
+                  const directTotal = Number(inv.total || 0);
+                  const directPaid = Number(inv.paid || 0);
+
+                  const displayTotal = isPayment ? directPaid : directTotal;
+                  const displayPaid = directPaid;
+                  const displayRemaining = customer ? customerBalance : Math.max(0, directTotal - directPaid);
+
+                  const isFullyPaid = isPayment ? true : (displayPaid >= displayTotal && displayTotal > 0);
 
                   return (
                     <div 
@@ -1020,7 +1090,11 @@ export default function Invoices() {
                             <span className="font-mono font-black text-sm text-[#2180B2] bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
                               #{inv.invoiceNumber}
                             </span>
-                            {inv.isQuote ? (
+                            {isPayment ? (
+                              <span className="text-[11px] bg-[#ECFDF5] text-[#059669] px-2 py-0.5 rounded-md font-bold border border-[#A7F3D0]">
+                                سند قبض نقدية
+                              </span>
+                            ) : inv.isQuote ? (
                               <span className="text-[11px] bg-[#FEF3C7] text-[#D97706] px-2 py-0.5 rounded-md font-bold border border-[#FDE68A]">
                                 عرض سعر
                               </span>
@@ -1028,7 +1102,7 @@ export default function Invoices() {
                               <span className="text-[11px] bg-[#F0FDF4] text-[#16A34A] px-2 py-0.5 rounded-md font-bold border border-[#BBF7D0]">
                                 مدفوعة بالكامل
                               </span>
-                            ) : inv.paid > 0 ? (
+                            ) : displayPaid > 0 ? (
                               <span className="text-[11px] bg-[#FFFBEB] text-[#D97706] px-2 py-0.5 rounded-md font-bold border border-[#FDE68A]">
                                 مدفوعة جزئياً
                               </span>
@@ -1047,9 +1121,11 @@ export default function Invoices() {
                         </div>
 
                         <div className="text-left">
-                          <span className="block text-[10px] text-slate-500 font-medium">الإجمالي</span>
+                          <span className="block text-[10px] text-slate-500 font-medium">
+                            {isPayment ? 'قيمة السند' : 'إجمالي الفاتورة'}
+                          </span>
                           <span className="font-black text-base text-[#1E293B] font-mono">
-                            {Number(inv.total || 0).toLocaleString()} <span className="text-[11px] font-normal">ج.م</span>
+                            {Number(displayTotal || 0).toLocaleString()} <span className="text-[11px] font-normal">ج.م</span>
                           </span>
                         </div>
                       </div>
@@ -1058,13 +1134,19 @@ export default function Invoices() {
                       {!inv.isQuote && (
                         <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded-lg border border-[#E2E8F0] text-xs">
                           <div>
-                            <span className="text-[#94A3B8] block text-[10px]">المدفوع:</span>
-                            <span className="font-bold text-[#16A34A] font-mono">{Number(inv.paid || 0).toLocaleString()} ج.م</span>
+                            <span className="text-[#94A3B8] block text-[10px]">
+                              {isPayment ? 'المحصل بالسند:' : 'المدفوع:'}
+                            </span>
+                            <span className="font-bold text-[#16A34A] font-mono">
+                              {Number(displayPaid || 0).toLocaleString()} ج.م
+                            </span>
                           </div>
                           <div className="text-left">
-                            <span className="text-[#94A3B8] block text-[10px]">المتبقي:</span>
-                            <span className={`font-bold font-mono ${remaining > 0 ? 'text-[#DC2626]' : 'text-slate-600'}`}>
-                              {Number(remaining || 0).toLocaleString()} ج.م
+                            <span className="text-[#94A3B8] block text-[10px]">
+                              المتبقي بذمة العميل:
+                            </span>
+                            <span className={`font-bold font-mono ${displayRemaining > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}`}>
+                              {Number(displayRemaining).toLocaleString()} ج.م
                             </span>
                           </div>
                         </div>
@@ -1109,43 +1191,93 @@ export default function Invoices() {
               <table className="w-full text-right">
                 <thead className="bg-[#F7FAFC] text-xs font-bold text-[#475569] uppercase tracking-wider">
                   <tr>
-                    <th className="px-6 py-4">رقم الفاتورة</th>
-                    <th className="px-6 py-4">التاريخ</th>
-                    <th className="px-6 py-4">العميل</th>
-                    <th className="px-6 py-4">الإجمالي (ج.م)</th>
-                    <th className="px-6 py-4">المدفوع (ج.م)</th>
-                    <th className="px-6 py-4">الحالة</th>
-                    <th className="px-6 py-4 text-center">إجراءات</th>
+                    <th className="px-5 py-4">رقم الفاتورة / المستند</th>
+                    <th className="px-5 py-4">التاريخ</th>
+                    <th className="px-5 py-4">العميل</th>
+                    <th className="px-5 py-4">الإجمالي (ج.م)</th>
+                    <th className="px-5 py-4">المدفوع (ج.م)</th>
+                    <th className="px-5 py-4">المتبقي بذمة العميل (ج.م)</th>
+                    <th className="px-5 py-4">الحالة</th>
+                    <th className="px-5 py-4 text-center">إجراءات</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E2E8F0] text-sm">
                   {filteredInvoices.length === 0 ? (
                     <tr>
-                       <td colSpan={7} className="px-6 py-8 text-center text-[#94A3B8]">لا توجد فواتير سابقة مسجلة</td>
+                       <td colSpan={8} className="px-6 py-8 text-center text-[#94A3B8]">لا توجد فواتير سابقة مسجلة</td>
                     </tr>
                   ) : (
                     filteredInvoices.map((inv, idx) => {
+                      const isPayment = inv.invoiceNumber.startsWith('PAY-') || (!inv.isQuote && (!inv.items || inv.items.length === 0) && (Number(inv.paid || 0) > 0 || Number(inv.total || 0) === 0));
                       const customer = customers.find(c => c.id === inv.customerId);
-                      const isFullyPaid = inv.paid >= inv.total;
                       const customerName = inv.isQuote && inv.customCustomerName ? inv.customCustomerName : (customer?.name || 'عميل نقدي');
+
+                      const customerInvoices = invoices.filter(i => i.customerId === inv.customerId && !i.isQuote && !i.invoiceNumber.startsWith('PAY-') && ((i.items && i.items.length > 0) || Number(i.total || 0) > 0));
+                      const customerTotalInvoices = customerInvoices.reduce((acc, i) => acc + Number(i.total || 0), 0);
+                      const customerPayments = invoices.filter(i => i.customerId === inv.customerId && !i.isQuote);
+                      const customerTotalPaid = customerPayments.reduce((acc, i) => acc + Number(i.paid || 0), 0);
+                      const customerBalance = Number(customer?.balance ?? Math.max(0, customerTotalInvoices - customerTotalPaid));
+
+                      const directTotal = Number(inv.total || 0);
+                      const directPaid = Number(inv.paid || 0);
+
+                      const displayTotal = isPayment ? directPaid : directTotal;
+                      const displayPaid = directPaid;
+                      const displayRemaining = customer ? customerBalance : Math.max(0, directTotal - directPaid);
+
+                      const isFullyPaid = isPayment ? true : (displayPaid >= displayTotal && displayTotal > 0);
+
                       return (
                         <tr key={inv.id ? `invoice-${inv.id}` : `invoice-idx-${idx}`} className="hover:bg-[#F8FAFC]">
-                          <td className="px-6 py-4 font-mono font-bold text-[#2180B2]">{inv.invoiceNumber}</td>
-                          <td className="px-6 py-4 text-[#475569]">{new Date(inv.date).toLocaleDateString()}</td>
-                          <td className="px-6 py-4 font-bold text-[#1E293B]">
+                          <td className="px-5 py-4 font-mono font-bold text-[#2180B2]">
+                            <div className="flex items-center gap-1.5">
+                              <span>#{inv.invoiceNumber}</span>
+                              {isPayment && (
+                                <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-sans border border-emerald-200">سند قبض</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 text-[#475569]">{new Date(inv.date).toLocaleDateString('ar-EG')}</td>
+                          <td className="px-5 py-4 font-bold text-[#1E293B]">
                             {customerName}
                             {inv.isQuote && <span className="mr-2 text-[10px] bg-[#FEF3C7] text-[#D97706] px-1.5 py-0.5 rounded font-bold">عرض سعر</span>}
                           </td>
-                          <td className="px-6 py-4 font-bold">{Number(inv.total || 0).toLocaleString()}</td>
-                          <td className="px-6 py-4 text-[#16A34A]">{inv.isQuote ? '---' : Number(inv.paid || 0).toLocaleString()}</td>
-                          <td className="px-6 py-4">
+                          <td className="px-5 py-4 font-bold font-mono">
+                            <div>
+                              <span>{Number(displayTotal || 0).toLocaleString()}</span>
+                              {isPayment && <span className="block text-[10px] text-slate-400 font-normal">قيمة السند</span>}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 text-[#16A34A] font-bold font-mono">
+                            <div>
+                              <span>{inv.isQuote ? '---' : Number(displayPaid || 0).toLocaleString()}</span>
+                              {isPayment && <span className="block text-[10px] text-emerald-600 font-normal">محصل بالسند</span>}
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 font-bold font-mono">
                             {inv.isQuote ? (
+                              <span className="text-slate-400">---</span>
+                            ) : (
+                              <div>
+                                <span className={displayRemaining > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}>
+                                  {Number(displayRemaining).toLocaleString()}
+                                </span>
+                                <span className="block text-[10px] text-slate-400 font-normal">
+                                  {displayRemaining > 0 ? 'متبقي بذمته' : 'خالص بالكامل'}
+                                </span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-5 py-4">
+                            {isPayment ? (
+                              <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#ECFDF5] text-[#059669] whitespace-nowrap border border-[#A7F3D0]">سند قبض مسدد</span>
+                            ) : inv.isQuote ? (
                               <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#FFFBEB] text-[#D97706] whitespace-nowrap border border-[#FDE68A]">عرض سعر معتمد</span>
                             ) : (
                               <>
                                 {isFullyPaid && <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#F0FDF4] text-[#16A34A] whitespace-nowrap">مدفوعة بالكامل</span>}
-                                {(!isFullyPaid && inv.paid > 0) && <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#FFFBEB] text-[#D97706] whitespace-nowrap">مدفوعة جزئياً</span>}
-                                {inv.paid === 0 && <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#FEF2F2] text-[#DC2626] whitespace-nowrap">آجل بالكامل</span>}
+                                {(!isFullyPaid && displayPaid > 0) && <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#FFFBEB] text-[#D97706] whitespace-nowrap">مدفوعة جزئياً</span>}
+                                {displayPaid === 0 && <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#FEF2F2] text-[#DC2626] whitespace-nowrap">آجل بالكامل</span>}
                               </>
                             )}
                           </td>
