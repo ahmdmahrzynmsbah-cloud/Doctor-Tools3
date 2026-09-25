@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "postinstall": "node scripts/patch-html2canvas.cjs",
     "electron:dev": "cross-env NODE_ENV=development concurrently \"vite --port=3000\" \"wait-on http://localhost:3000 && electron .\"",
     "electron:build": "vite build && electron-builder --win portable"
   },

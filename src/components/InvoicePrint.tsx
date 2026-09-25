@@ -133,8 +133,14 @@ export default function InvoicePrint({ invoice, customer, inventory, profile, al
       id="invoice-card"
       className="bg-white text-[#1E293B] p-8 w-[850px] max-w-none shadow-lg border border-[#E2E8F0] print:border-none print:shadow-none print:w-full print:max-w-none print:p-2 relative select-none font-sans mx-auto shrink-0 flex flex-col justify-start box-border print:h-auto print:min-h-0" 
       dir="rtl"
-      style={{ fontFamily: '"Cairo", system-ui, sans-serif', backgroundColor: '#ffffff', color: '#1E293B', boxSizing: 'border-box' }}
+      style={{ fontFamily: "'Cairo', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", backgroundColor: '#ffffff', color: '#1E293B', boxSizing: 'border-box' }}
     >
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
+        #invoice-card, #invoice-card *, #pdf-staging-wrapper, #pdf-staging-wrapper * {
+          font-family: 'Cairo', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+        }
+      `}</style>
       {/* Top Main Content Section */}
       <div className="flex-1 flex flex-col print:block">
         {/* Decorative Top Accent Bar */}
@@ -355,67 +361,82 @@ export default function InvoicePrint({ invoice, customer, inventory, profile, al
           </div>
         )}
 
-        {/* Totals Section */}
-        <div className="grid grid-cols-2 gap-5 items-end mb-6 pt-2 break-inside-avoid" style={{ marginBottom: '24px' }}>
-          {/* Left: Notes / Remarks */}
-          <div className="bg-[#FAFDFB] rounded-xl border border-[#DEF7EC] p-4 text-right" style={{ backgroundColor: '#FAFDFB', border: '1px solid #DEF7EC', borderRadius: '12px', padding: '16px' }}>
-            <h4 className="text-xs sm:text-sm font-bold text-[#03543F] mb-1.5 flex items-center gap-1.5" style={{ color: '#03543F' }}>
-              <ShieldCheck className="w-4 h-4 text-[#03543F]" /> 
-              {isPaymentReceipt ? 'اعتماد وصحة السداد' : invoice.isQuote ? 'ملاحظات عرض السعر' : 'ضمان وجودة متميزة'}
-            </h4>
-            <p className="text-[11px] sm:text-xs text-[#046C4E] leading-relaxed" style={{ color: '#046C4E', lineHeight: '1.5' }}>
-              {isPaymentReceipt ? 
-                'تم قيد هذا المبلغ بحساب العميل رسمياً وتحديث رصيد الحساب المالي. هذا المستند يعد إيصالاً نقدياً رسمياً معتمداً من إدارة المبيعات والحسابات.' :
-                invoice.isQuote ? 
-                  'الأسعار الموضحة أعلاه سارية لمدة 7 أيام من تاريخ إطلاق عرض السعر، وتعتبر الفاتورة نافذة فور الاعتماد والتوريد. نشكر ثقتكم الغالية بنا!' :
-                  'لا ترد أو تستبدل البضاعة المباعة إلا في حالة وجود عيب صناعة واضح، وذلك خلال 14 يوماً من تاريخ الفاتورة بشرط سلامة العبوة وإحضار الفاتورة الأصلية. نشكر ثقتكم الغالية بنا دائماً!'
-              }
-            </p>
-          </div>
-
-          {/* Right: Beautiful Bento-style Totals Summary */}
-          <div className="bg-[#F8FAFC] rounded-2xl border-2 border-[#CBD5E1] p-5 space-y-3.5 shadow-md text-right" style={{ backgroundColor: '#F8FAFC', border: '2px solid #CBD5E1', borderRadius: '16px', padding: '20px' }}>
+        {/* Full-width Totals & Balance Breakdown Section */}
+        <div className="w-full mb-4 pt-1 break-inside-avoid" style={{ marginBottom: '16px' }}>
+          {/* Bento-style Totals Summary - Now Full Width (100%) */}
+          <div 
+            className="w-full bg-[#F8FAFC] rounded-2xl border-2 border-[#CBD5E1] p-5 shadow-sm text-right" 
+            style={{ backgroundColor: '#F8FAFC', border: '2px solid #CBD5E1', borderRadius: '16px', padding: '20px', width: '100%', boxSizing: 'border-box' }}
+          >
             {isPaymentReceipt ? (
-              /* Receipt Financial Breakdown */
-              <>
-                <div className="flex justify-between items-center text-[#475569] border-b border-[#CBD5E1] pb-3 text-sm font-bold">
-                  <span className="text-sm text-slate-700">رصيد العميل السابق (قبل السند):</span>
-                  <div className="font-mono text-base sm:text-lg font-bold text-[#1E293B] inline-flex items-center gap-1" dir="ltr">
-                    <span>{Number(customerBalanceBefore).toLocaleString()}</span>
-                    <span dir="rtl" className="text-xs font-normal">ج.م</span>
-                  </div>
+              /* Receipt Financial Breakdown - Full Width Layout */
+              <div className="space-y-3.5">
+                {/* Header title */}
+                <div className="flex justify-between items-center pb-2.5 border-b border-[#E2E8F0]">
+                  <span className="text-sm font-extrabold text-[#0F172A] flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-[#2563EB]" />
+                    ملخص وتصفية الحساب المالي بعد السداد
+                  </span>
+                  <span className="text-xs font-bold text-slate-500 font-mono">
+                    سند قبض رقم #{invoice.invoiceNumber}
+                  </span>
                 </div>
 
-                <div className="flex justify-between items-center text-[#16A34A] border-b border-[#CBD5E1] pb-3 text-sm font-bold bg-[#F0FDF4] px-3.5 py-2.5 rounded-xl border border-[#BBF7D0]">
-                  <span className="text-sm font-black text-[#15803D]">المبلغ المسدد بهذا السند:</span>
-                  <div className="font-mono text-lg font-black text-[#166534] inline-flex items-center gap-1" dir="ltr">
-                    <span>-{Number(paidThisReceipt).toLocaleString()}</span>
-                    <span dir="rtl" className="text-xs font-normal">ج.م</span>
+                {/* 3 Balanced Items in a beautiful full-width grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* 1. رصيد العميل السابق */}
+                  <div className="bg-white rounded-xl border border-[#E2E8F0] p-3.5 flex flex-col justify-between shadow-2xs">
+                    <span className="text-xs font-bold text-slate-600 block mb-1">
+                      رصيد العميل السابق (قبل السند):
+                    </span>
+                    <div className="font-mono text-lg sm:text-xl font-black text-[#1E293B] flex items-center justify-between" dir="ltr">
+                      <span dir="rtl" className="text-xs font-normal text-slate-500">ج.م</span>
+                      <span>{Number(customerBalanceBefore).toLocaleString()}</span>
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex justify-between items-center pt-2">
-                  <div className="flex flex-col text-right">
-                    <span className="text-sm sm:text-base font-black text-[#0F172A]">الرصيد المتبقي بذمة العميل:</span>
-                    {customerBalanceAfter > 0 ? (
-                      <span className="text-xs text-[#DC2626] font-extrabold">(متبقي على العميل)</span>
-                    ) : (
-                      <span className="text-xs text-[#16A34A] font-extrabold">(تمت التصفية بالكامل - خالص)</span>
-                    )}
+                  {/* 2. المبلغ المسدد بهذا السند */}
+                  <div className="bg-[#F0FDF4] rounded-xl border-2 border-[#86EFAC] p-3.5 flex flex-col justify-between shadow-2xs">
+                    <span className="text-xs font-black text-[#15803D] block mb-1 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />
+                      المبلغ المسدد بهذا السند:
+                    </span>
+                    <div className="font-mono text-lg sm:text-xl font-black text-[#166534] flex items-center justify-between" dir="ltr">
+                      <span dir="rtl" className="text-xs font-bold text-[#15803D]">ج.م</span>
+                      <span>-{Number(paidThisReceipt).toLocaleString()}</span>
+                    </div>
                   </div>
-                  <div className={`font-mono text-xl sm:text-2xl font-black ${customerBalanceAfter > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'} inline-flex items-center gap-1`} dir="ltr">
-                    <span>{Number(customerBalanceAfter).toLocaleString()}</span>
-                    <span dir="rtl" className="text-sm font-normal">ج.م</span>
+
+                  {/* 3. الرصيد المتبقي بذمة العميل */}
+                  <div className={`rounded-xl border-2 p-3.5 flex flex-col justify-between shadow-2xs ${customerBalanceAfter > 0 ? 'bg-[#FEF2F2] border-[#FECACA]' : 'bg-[#F0FDF4] border-[#BBF7D0]'}`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`text-xs font-black ${customerBalanceAfter > 0 ? 'text-[#991B1B]' : 'text-[#15803D]'}`}>
+                        الرصيد المتبقي بذمة العميل:
+                      </span>
+                      {customerBalanceAfter > 0 ? (
+                        <span className="text-[10px] text-[#DC2626] font-extrabold px-1.5 py-0.5 rounded bg-white/80 border border-[#FECACA]">
+                          متبقي عليه
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-[#16A34A] font-extrabold px-1.5 py-0.5 rounded bg-white/80 border border-[#BBF7D0]">
+                          خالص بالكامل
+                        </span>
+                      )}
+                    </div>
+                    <div className={`font-mono text-xl sm:text-2xl font-black flex items-center justify-between ${customerBalanceAfter > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}`} dir="ltr">
+                      <span dir="rtl" className="text-xs font-normal">ج.م</span>
+                      <span>{Number(customerBalanceAfter).toLocaleString()}</span>
+                    </div>
                   </div>
                 </div>
-              </>
+              </div>
             ) : (
-              /* Regular Sales Invoice Breakdown */
-              <>
+              /* Regular Sales Invoice Breakdown - Full Width */
+              <div className="space-y-3">
                 {discountAmount > 0 && (
-                  <div className="flex justify-between items-center text-[#475569] border-b border-[#E2E8F0] pb-1.5 text-xs font-semibold" style={{ display: 'flex', justifyContent: 'space-between', color: '#475569', borderBottom: '1px solid #E2E8F0', paddingBottom: '6px' }}>
+                  <div className="flex justify-between items-center text-[#475569] border-b border-[#E2E8F0] pb-2 text-xs font-semibold" style={{ display: 'flex', justifyContent: 'space-between', color: '#475569', borderBottom: '1px solid #E2E8F0', paddingBottom: '8px' }}>
                     <span>الإجمالي قبل الخصم:</span>
-                    <div className="font-mono text-xs text-[#475569] inline-flex items-center gap-1" dir="ltr" style={{ color: '#475569' }}>
+                    <div className="font-mono text-sm text-[#475569] inline-flex items-center gap-1" dir="ltr" style={{ color: '#475569' }}>
                       <span>{Number(subtotal || 0).toLocaleString()}</span>
                       <span dir="rtl">ج.م</span>
                     </div>
@@ -423,7 +444,7 @@ export default function InvoicePrint({ invoice, customer, inventory, profile, al
                 )}
                 
                 {discountAmount > 0 && (
-                  <div className="flex justify-between items-center text-[#DC2626] border-b border-[#E2E8F0] pb-1.5 text-xs font-bold bg-[#FEF2F2] px-2.5 py-1 rounded-md border border-[#FECACA]" style={{ display: 'flex', justifyContent: 'space-between', color: '#DC2626', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '4px 10px' }}>
+                  <div className="flex justify-between items-center text-[#DC2626] border-b border-[#E2E8F0] pb-2 text-xs font-bold bg-[#FEF2F2] px-3 py-1.5 rounded-lg border border-[#FECACA]" style={{ display: 'flex', justifyContent: 'space-between', color: '#DC2626', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '6px 12px' }}>
                     <span className="flex items-center gap-1">
                       <span>الخصم المطبق</span>
                       {invoice.discountValue && invoice.discountType === 'percentage' ? (
@@ -433,65 +454,90 @@ export default function InvoicePrint({ invoice, customer, inventory, profile, al
                       ) : ''}
                       :
                     </span>
-                    <div className="font-mono text-xs inline-flex items-center gap-1" dir="ltr" style={{ color: '#DC2626' }}>
+                    <div className="font-mono text-sm inline-flex items-center gap-1" dir="ltr" style={{ color: '#DC2626' }}>
                       <span>-{Number(discountAmount || 0).toLocaleString()}</span>
                       <span dir="rtl">ج.م</span>
                     </div>
                   </div>
                 )}
 
-                {/* 1. إجمالي الفاتورة كلها */}
-                <div className="flex justify-between items-center text-[#1E293B] border-b border-[#E2E8F0] pb-2 text-xs font-bold" style={{ display: 'flex', justifyContent: 'space-between', color: '#1E293B', borderBottom: '1px solid #E2E8F0', paddingBottom: '8px' }}>
-                  <span className="text-sm font-extrabold">
-                    {invoice.isQuote ? (discountAmount > 0 ? 'إجمالي عرض السعر بعد الخصم:' : 'إجمالي عرض السعر:') : (discountAmount > 0 ? 'إجمالي الفاتورة بعد الخصم:' : 'إجمالي الفاتورة (المبلغ بالكامل):')}
-                  </span>
-                  <div className="font-mono text-base sm:text-lg font-black text-[#1E293B] inline-flex items-center gap-1" dir="ltr" style={{ color: '#1E293B', fontWeight: 900 }}>
-                    <span>{Number(effectiveInvoiceTotal).toLocaleString()}</span>
-                    <span dir="rtl" className="text-xs">ج.م</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  {/* 1. إجمالي الفاتورة */}
+                  <div className="bg-white rounded-xl border border-[#CBD5E1] p-3.5 flex flex-col justify-between shadow-2xs">
+                    <span className="text-xs font-bold text-slate-700 block mb-1">
+                      {invoice.isQuote ? (discountAmount > 0 ? 'إجمالي العرض بعد الخصم:' : 'إجمالي عرض السعر:') : (discountAmount > 0 ? 'الإجمالي بعد الخصم:' : 'إجمالي الفاتورة:')}
+                    </span>
+                    <div className="font-mono text-lg sm:text-xl font-black text-[#1E293B] flex items-center justify-between" dir="ltr">
+                      <span dir="rtl" className="text-xs font-normal text-slate-500">ج.م</span>
+                      <span>{Number(effectiveInvoiceTotal).toLocaleString()}</span>
+                    </div>
                   </div>
+
+                  {!invoice.isQuote && (
+                    <>
+                      {/* 2. المدفوع */}
+                      <div className="bg-[#F0FDF4] rounded-xl border border-[#BBF7D0] p-3.5 flex flex-col justify-between shadow-2xs">
+                        <span className="text-xs font-bold text-[#15803D] block mb-1">
+                          المبلغ المدفوع (المحصل):
+                        </span>
+                        <div className="font-mono text-lg sm:text-xl font-black text-[#166534] flex items-center justify-between" dir="ltr">
+                          <span dir="rtl" className="text-xs font-normal text-[#15803D]">ج.م</span>
+                          <span>{Number(effectivePaid).toLocaleString()}</span>
+                        </div>
+                      </div>
+
+                      {/* 3. المتبقي */}
+                      <div className={`rounded-xl border p-3.5 flex flex-col justify-between shadow-2xs ${effectiveRemaining > 0 ? 'bg-[#FEF2F2] border-[#FECACA]' : 'bg-[#F0FDF4] border-[#BBF7D0]'}`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-xs font-black ${effectiveRemaining > 0 ? 'text-[#991B1B]' : 'text-[#15803D]'}`}>
+                            المبلغ المتبقي:
+                          </span>
+                          {effectiveRemaining > 0 ? (
+                            <span className="text-[10px] text-[#DC2626] font-bold px-1.5 py-0.2 rounded bg-white/80 border border-[#FECACA]">
+                              متبقي
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-[#16A34A] font-bold px-1.5 py-0.2 rounded bg-white/80 border border-[#BBF7D0]">
+                              خالص
+                            </span>
+                          )}
+                        </div>
+                        <div className={`font-mono text-lg sm:text-xl font-black flex items-center justify-between ${effectiveRemaining > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'}`} dir="ltr">
+                          <span dir="rtl" className="text-xs font-normal">ج.م</span>
+                          <span>{Number(effectiveRemaining).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                {!invoice.isQuote && (
-                  <>
-                    {/* 2. المبلغ المدفوع */}
-                    <div className="flex justify-between items-center text-[#16A34A] border-b border-[#E2E8F0] pb-2 text-xs font-bold" style={{ display: 'flex', justifyContent: 'space-between', color: '#16A34A', borderBottom: '1px solid #E2E8F0', paddingBottom: '8px' }}>
-                      <span className="text-xs font-bold">المبلغ المدفوع (المحصل):</span>
-                      <div className="font-mono text-sm sm:text-base font-black inline-flex items-center gap-1" dir="ltr" style={{ color: '#16A34A', fontWeight: 800 }}>
-                        <span>{Number(effectivePaid).toLocaleString()}</span>
-                        <span dir="rtl" className="text-xs">ج.م</span>
-                      </div>
-                    </div>
-
-                    {/* 3. المبلغ المتبقي */}
-                    <div className="flex justify-between items-center pt-1.5" style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '6px' }}>
-                      <div className="flex flex-col text-right">
-                        <span className="text-xs sm:text-sm font-black text-[#0F172A]" style={{ color: '#0F172A', fontWeight: 900 }}>المبلغ المتبقي:</span>
-                        {effectiveRemaining > 0 ? (
-                          <span className="text-[10px] text-[#DC2626] font-bold" style={{ color: '#DC2626' }}>(متبقي على العميل)</span>
-                        ) : (
-                          <span className="text-[10px] text-[#16A34A] font-bold" style={{ color: '#16A34A' }}>(خالص بالكامل)</span>
-                        )}
-                      </div>
-                      <div className={`font-mono text-base sm:text-lg font-black ${effectiveRemaining > 0 ? 'text-[#DC2626]' : 'text-[#16A34A]'} inline-flex items-center gap-1`} dir="ltr" style={{ color: effectiveRemaining > 0 ? '#DC2626' : '#16A34A', fontWeight: 900 }}>
-                        <span>{Number(effectiveRemaining).toLocaleString()}</span>
-                        <span dir="rtl" className="text-xs">ج.م</span>
-                      </div>
-                    </div>
-
-                    {/* صافي رصيد حساب العميل المتبقي إن وجد */}
-                    {customer && customerBalance !== effectiveRemaining && (
-                      <div className="flex justify-between items-center text-[#475569] border-t border-[#E2E8F0] pt-1.5 text-[11px] font-semibold">
-                        <span>إجمالي رصيد العميل الحالي بالدفتر:</span>
-                        <span className="font-mono font-bold text-slate-800" dir="ltr">
-                          {Number(customerBalance).toLocaleString()} ج.م
-                        </span>
-                      </div>
-                    )}
-                  </>
+                {!invoice.isQuote && customer && customerBalance !== effectiveRemaining && (
+                  <div className="flex justify-between items-center text-[#475569] border-t border-[#E2E8F0] pt-2 text-xs font-semibold px-1">
+                    <span>إجمالي رصيد العميل الحالي بالدفتر:</span>
+                    <span className="font-mono font-bold text-slate-800" dir="ltr">
+                      {Number(customerBalance).toLocaleString()} ج.م
+                    </span>
+                  </div>
                 )}
-              </>
+              </div>
             )}
           </div>
+        </div>
+
+        {/* Notes / "اعتماد وصحة السداد" - Positioned UNDERNEATH the Totals Box as requested */}
+        <div className="w-full bg-[#FAFDFB] rounded-xl border border-[#DEF7EC] p-4 text-right mb-6 break-inside-avoid shadow-2xs" style={{ backgroundColor: '#FAFDFB', border: '1px solid #DEF7EC', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
+          <h4 className="text-xs sm:text-sm font-bold text-[#03543F] mb-1.5 flex items-center gap-1.5" style={{ color: '#03543F' }}>
+            <ShieldCheck className="w-4 h-4 text-[#03543F]" /> 
+            {isPaymentReceipt ? 'اعتماد وصحة السداد' : invoice.isQuote ? 'ملاحظات عرض السعر' : 'ضمان وجودة متميزة'}
+          </h4>
+          <p className="text-[11px] sm:text-xs text-[#046C4E] leading-relaxed" style={{ color: '#046C4E', lineHeight: '1.5' }}>
+            {isPaymentReceipt ? 
+              'تم قيد هذا المبلغ بحساب العميل رسمياً وتحديث رصيد الحساب المالي. هذا المستند يعد إيصالاً نقدياً رسمياً معتمداً من إدارة المبيعات والحسابات.' :
+              invoice.isQuote ? 
+                'الأسعار الموضحة أعلاه سارية لمدة 7 أيام من تاريخ إطلاق عرض السعر، وتعتبر الفاتورة نافذة فور الاعتماد والتوريد. نشكر ثقتكم الغالية بنا!' :
+                'لا ترد أو تستبدل البضاعة المباعة إلا في حالة وجود عيب صناعة واضح، وذلك خلال 14 يوماً من تاريخ الفاتورة بشرط سلامة العبوة وإحضار الفاتورة الأصلية. نشكر ثقتكم الغالية بنا دائماً!'
+            }
+          </p>
         </div>
       </div>
 
