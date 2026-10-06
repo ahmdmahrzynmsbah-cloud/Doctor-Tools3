@@ -1,25 +1,29 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Search, X, Factory, ArrowDownToLine, ShoppingCart, History, Edit2, Trash2, Banknote, Printer, Share2, Loader2, MessageCircle, Calendar } from 'lucide-react';
+import { Plus, Search, X, Factory, ArrowDownToLine, ShoppingCart, History, Edit2, Trash2, Banknote, Printer, Share2, Loader2, MessageCircle, Calendar, CheckCircle2 } from 'lucide-react';
 import { useAppData, Supplier } from '@/src/context/AppDataContext';
 import ProductSearchSelect from '../components/ProductSearchSelect';
 import { captureElementToCanvas } from '../utils/canvasCapture';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 
 export default function Suppliers() {
-  const { suppliers, purchases, inventory, addSupplier, updateSupplier, deleteSupplier, createPurchase, recordSupplierPayment, businessProfile, addInventoryItem } = useAppData();
+  const { suppliers, purchases, inventory, addSupplier, updateSupplier, deleteSupplier, createPurchase, deletePurchase, recordSupplierPayment, businessProfile, addInventoryItem, auditAndReconcileBalances } = useAppData();
   const [searchTerm, setSearchTerm] = useState('');
   
   const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [auditMessage, setAuditMessage] = useState<string | null>(null);
+
   const [paymentSupplier, setPaymentSupplier] = useState<Supplier | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [paymentDate, setPaymentDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
 
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [purchaseItems, setPurchaseItems] = useState<{inventoryId: string; isNew: boolean; newName: string; newSellPrice: number; qty: number; cost: number;}[]>([{ inventoryId: '', isNew: false, newName: '', newSellPrice: 0, qty: 1, cost: 0 }]);
-  const [paidAmount, setPaidAmount] = useState(0);  const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paidAmount, setPaidAmount] = useState(0);
+  const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [selectedSupplierHistory, setSelectedSupplierHistory] = useState<Supplier | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
@@ -28,25 +32,52 @@ export default function Suppliers() {
   const [newSupplier, setNewSupplier] = useState<{
     name: string;
     phone: string;
+    initialBalance: number | string;
     balance: number | string;
     date: string;
   }>({
-    name: '', phone: '', balance: '', date: new Date().toISOString().split('T')[0]
+    name: '', phone: '', initialBalance: '', balance: '', date: new Date().toISOString().split('T')[0]
   });
 
   const getSupplierPurchases = (supplierId: string) => {
     return purchases.filter(p => p.supplierId === supplierId);
   };
 
-  const ledgerEntries = useMemo(() => {
-    if (!selectedSupplierHistory) return [];
+  const activeSupplier = useMemo(() => {
+    if (!selectedSupplierHistory) return null;
+    return suppliers.find(s => s.id === selectedSupplierHistory.id) || selectedSupplierHistory;
+  }, [selectedSupplierHistory, suppliers]);
 
-    const transactions = [...getSupplierPurchases(selectedSupplierHistory.id)].sort(
+  const statementSummary = useMemo(() => {
+    if (!activeSupplier) return null;
+    const transactions = getSupplierPurchases(activeSupplier.id);
+    const totalPurchases = transactions.reduce((acc, p) => acc + Number(p.total || 0), 0);
+    const totalPayments = transactions.reduce((acc, p) => acc + Number((p as any).paid ?? (p as any).paidAmount ?? 0), 0);
+    const netChange = totalPurchases - totalPayments;
+    const initialBalance = activeSupplier.initialBalance !== undefined
+      ? Number(activeSupplier.initialBalance)
+      : (Number(activeSupplier.balance || 0) - netChange);
+    const currentBalance = initialBalance + netChange;
+
+    return {
+      initialBalance,
+      totalPurchases,
+      totalPayments,
+      currentBalance
+    };
+  }, [activeSupplier, purchases]);
+
+  const ledgerEntries = useMemo(() => {
+    if (!activeSupplier) return [];
+
+    const transactions = [...getSupplierPurchases(activeSupplier.id)].sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
-    let netChange = transactions.reduce((acc, inv) => acc + (inv.total - inv.paid), 0);
-    const initialBalance = selectedSupplierHistory.balance - netChange;
+    let netChange = transactions.reduce((acc, inv) => acc + (Number(inv.total || 0) - Number((inv as any).paid ?? (inv as any).paidAmount ?? 0)), 0);
+    const initialBalance = activeSupplier.initialBalance !== undefined
+      ? Number(activeSupplier.initialBalance)
+      : (Number(activeSupplier.balance || 0) - netChange);
 
     let currentBalance = initialBalance;
     const entries = [];
@@ -80,28 +111,39 @@ export default function Suppliers() {
     }
 
     transactions.forEach(inv => {
-      const isPayment = inv.items.length === 0;
-      const debit = inv.paid; // دفعات سددناها للمورد
-      const credit = inv.total; // بضاعة وردها لنا المورد
+      const isPayment = (!inv.items || inv.items.length === 0) && Number(inv.total || 0) === 0;
+      const debit = Number(inv.paid || 0); // دفعات سددناها للمورد
+      const credit = Number(inv.total || 0); // بضاعة وردها لنا المورد
       
       currentBalance += (credit - debit);
 
       let purchaseDetails = '';
-      if (!isPayment && inv.items.length > 0) {
+      if (!isPayment && inv.items && inv.items.length > 0) {
         const itemDetails = inv.items.map(item => {
           const inventoryItem = inventory.find(i => i.id === item.itemId || i.id === (item as any).id);
           const name = inventoryItem ? inventoryItem.name : ((item as any).name || (item as any).itemName || 'صنف');
           const itemPrice = (item as any).price ?? (item as any).unitPrice ?? 0;
           const totalItemPrice = Number((item.quantity || 0) * (itemPrice || 0)).toLocaleString();
-          return `${name} (العدد: ${item.quantity} | السعر الكلي: ${totalItemPrice} ج.م)`;
+          return `${name} (${item.quantity} × ${Number(itemPrice).toLocaleString()} = ${totalItemPrice} ج.م)`;
         });
         purchaseDetails = ` - أصناف: ${itemDetails.join('، ')}`;
+      }
+
+      let description = '';
+      if (isPayment) {
+        description = currentBalance === 0 
+          ? `سند صرف / سداد نقدي للمورد (تسوية وتصفير الرصيد بالكامل)` 
+          : `سند صرف / سداد نقدي للمورد`;
+      } else if (debit > 0) {
+        description = `توريد بضاعة${purchaseDetails} (مسدد منها نقداً: ${debit.toLocaleString()} ج.م)`;
+      } else {
+        description = `توريد بضاعة آجل${purchaseDetails}`;
       }
 
       entries.push({
         id: inv.id,
         date: new Date(inv.date).toLocaleDateString('ar-EG'),
-        description: isPayment ? `سند صرف للمورد` : `توريد ونزول بضاعة${purchaseDetails}`,
+        description,
         debit: debit,
         credit: credit,
         balance: currentBalance,
@@ -243,16 +285,28 @@ export default function Suppliers() {
 
   const handleAddSupplier = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = {
-      name: newSupplier.name,
-      phone: newSupplier.phone,
-      balance: Number(newSupplier.balance) || 0,
-      createdAt: newSupplier.date ? new Date(newSupplier.date).getTime() : Date.now(),
-    };
+    const initVal = Number(newSupplier.initialBalance) || 0;
+
     if (editingSupplier) {
-      updateSupplier(editingSupplier.id, payload);
+      const supPurs = purchases.filter(p => p.supplierId === editingSupplier.id);
+      const netChange = supPurs.reduce((acc, p) => acc + (Number(p.total || 0) - Number(p.paid || 0)), 0);
+      const calculatedBalance = initVal + netChange;
+
+      updateSupplier(editingSupplier.id, {
+        name: newSupplier.name,
+        phone: newSupplier.phone,
+        initialBalance: initVal,
+        balance: calculatedBalance,
+        createdAt: newSupplier.date ? new Date(newSupplier.date).getTime() : (editingSupplier.createdAt || Date.now()),
+      });
     } else {
-      addSupplier(payload);
+      addSupplier({
+        name: newSupplier.name,
+        phone: newSupplier.phone,
+        initialBalance: initVal,
+        balance: initVal,
+        createdAt: newSupplier.date ? new Date(newSupplier.date).getTime() : Date.now(),
+      });
     }
     closeSupplierModal();
   };
@@ -260,14 +314,21 @@ export default function Suppliers() {
   const closeSupplierModal = () => {
     setIsAddSupplierModalOpen(false);
     setEditingSupplier(null);
-    setNewSupplier({ name: '', phone: '', balance: '', date: new Date().toISOString().split('T')[0] });
+    setNewSupplier({ name: '', phone: '', initialBalance: '', balance: '', date: new Date().toISOString().split('T')[0] });
   };
 
   const openEditSupplierModal = (supplier: Supplier) => {
     setEditingSupplier(supplier);
+    const supPurs = purchases.filter(p => p.supplierId === supplier.id);
+    const netChange = supPurs.reduce((acc, p) => acc + (Number(p.total || 0) - Number(p.paid || 0)), 0);
+    const initBal = supplier.initialBalance !== undefined 
+      ? Number(supplier.initialBalance) 
+      : (Number(supplier.balance || 0) - netChange);
+
     setNewSupplier({
       name: supplier.name,
       phone: supplier.phone,
+      initialBalance: initBal === 0 ? '' : initBal,
       balance: supplier.balance === 0 ? '' : supplier.balance,
       date: supplier.createdAt ? new Date(supplier.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
     });
@@ -292,6 +353,23 @@ export default function Suppliers() {
       alert('حدث خطأ أثناء حذف المورد: ' + (err?.message || String(err)));
     } finally {
       setIsDeletingSupplier(false);
+    }
+  };
+
+  const [transactionToDelete, setTransactionToDelete] = useState<any | null>(null);
+  const [isDeletingTransaction, setIsDeletingTransaction] = useState(false);
+
+  const handleConfirmDeleteTransaction = async () => {
+    if (!transactionToDelete) return;
+    setIsDeletingTransaction(true);
+    try {
+      await deletePurchase(transactionToDelete.id);
+      setTransactionToDelete(null);
+    } catch (err: any) {
+      console.error(err);
+      alert('حدث خطأ أثناء حذف المعاملة: ' + (err?.message || String(err)));
+    } finally {
+      setIsDeletingTransaction(false);
     }
   };
 
@@ -472,7 +550,7 @@ export default function Suppliers() {
           compatibleCars: '',
           category: 'عام',
           storageLocation: '',
-          quantity: 0,
+          quantity: item.qty,
           purchasePrice: item.cost,
           sellPrice: item.newSellPrice
         });
@@ -504,7 +582,28 @@ export default function Suppliers() {
           <h2 className="text-2xl font-bold text-[#1E293B]">حسابات الموردين والمشتريات</h2>
           <p className="mt-1 text-sm text-[#475569]">إدارة بيانات الموردين وتسجيل عمليات الشراء التي تُسمِّع في المخزن فوراً</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2.5 items-center">
+          <button 
+            onClick={async () => {
+              setIsAuditing(true);
+              try {
+                const res = await auditAndReconcileBalances();
+                setAuditMessage(`تم تدقيق وضبط أرصدة الموردين بدقة (${res.updatedSuppliers} تم تحديثهم)`);
+                setTimeout(() => setAuditMessage(null), 5000);
+              } catch (e: any) {
+                console.error(e);
+                alert('حدث خطأ أثناء تدقيق الحسابات');
+              } finally {
+                setIsAuditing(false);
+              }
+            }}
+            disabled={isAuditing}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-white border border-[#CBD5E1] px-3.5 py-2 text-sm font-semibold text-[#334155] transition-colors hover:bg-[#F8FAFC] cursor-pointer shadow-xs disabled:opacity-50"
+            title="تدقيق ومطابقة أرصدة الموردين حسابياً مع الفواتير وسندات الصرف"
+          >
+            {isAuditing ? <Loader2 className="h-4 w-4 animate-spin text-[#2563EB]" /> : <CheckCircle2 className="h-4 w-4 text-[#10B981]" />}
+            <span>{isAuditing ? 'جاري التدقيق...' : 'تدقيق وضبط الأرصدة'}</span>
+          </button>
           <button 
             onClick={() => setIsPurchaseModalOpen(true)}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-[#10B981] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#059669] cursor-pointer"
@@ -515,7 +614,7 @@ export default function Suppliers() {
           <button 
             onClick={() => {
               setEditingSupplier(null);
-              setNewSupplier({ name: '', phone: '', balance: '', date: new Date().toISOString().split('T')[0] });
+              setNewSupplier({ name: '', phone: '', initialBalance: '', balance: '', date: new Date().toISOString().split('T')[0] });
               setIsAddSupplierModalOpen(true);
             }}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-[#2563EB] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8] cursor-pointer"
@@ -525,6 +624,18 @@ export default function Suppliers() {
           </button>
         </div>
       </div>
+
+      {auditMessage && (
+        <div className="bg-[#ECFDF5] border border-[#A7F3D0] text-[#065F46] px-4 py-3 rounded-xl text-sm font-bold flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-[#059669]" />
+            <span>{auditMessage}</span>
+          </div>
+          <button onClick={() => setAuditMessage(null)} className="text-[#059669] hover:text-[#065F46] cursor-pointer p-1">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm flex flex-col">
         <div className="p-5 border-b border-[#E2E8F0] flex flex-col sm:flex-row gap-4 justify-between items-center">
@@ -766,8 +877,16 @@ export default function Suppliers() {
               </h3>
               <div className="flex items-center gap-2">
                  <button 
+                   onClick={() => activeSupplier && openEditSupplierModal(activeSupplier)}
+                   className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 bg-white border border-[#CBD5E1] text-[#334155] rounded-xl font-bold text-xs hover:bg-[#F8FAFC] transition-colors cursor-pointer shadow-xs"
+                   title="تعديل بيانات ورصيد المورد"
+                 >
+                   <Edit2 className="w-4 h-4 text-[#2563EB]" />
+                   <span>تعديل الحساب</span>
+                 </button>
+                 <button 
                    onClick={handleShareWhatsApp} 
-                   disabled={isGeneratingImage || !selectedSupplierHistory.phone}
+                   disabled={isGeneratingImage || !activeSupplier?.phone}
                    className="inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 bg-[#16A34A] text-white rounded-xl font-bold text-xs hover:bg-[#15803D] transition-colors border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                  >
                     {isGeneratingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
@@ -804,27 +923,62 @@ export default function Suppliers() {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center bg-[#F1F5F9] p-4 rounded-xl border border-[#E2E8F0] gap-4 print:bg-transparent print:border-none print:p-0 print:items-end print:mb-6">
-                <div className="flex items-center gap-3 text-right print:gap-2">
-                  <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#2563EB] shadow-sm print:hidden flex-shrink-0 min-w-[48px]" dir="ltr">
-                    <Factory className="w-6 h-6" />
+              <div className="bg-[#F8FAFC] p-4 rounded-xl border border-[#E2E8F0] space-y-4 print:bg-transparent print:border-none print:p-0 print:mb-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div className="flex items-center gap-3 text-right print:gap-2">
+                    <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#2563EB] shadow-sm print:hidden flex-shrink-0 min-w-[48px]" dir="ltr">
+                      <Factory className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-[#1E293B] text-base sm:text-lg print:text-xl">اسم المورد: {activeSupplier?.name || 'مورد'}</h3>
+                      <p className="text-xs sm:text-sm text-[#475569] font-mono mt-0.5 print:text-[#1E293B]">
+                        رقم الهاتف: {activeSupplier?.phone ? activeSupplier.phone : 'غير مسجل'}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-[#1E293B] text-base sm:text-lg print:text-xl">اسم المورد: {selectedSupplierHistory.name || 'مورد'}</h3>
-                    <p className="text-xs sm:text-sm text-[#475569] font-mono mt-0.5 print:text-[#1E293B]">
-                      رقم الهاتف: {selectedSupplierHistory.phone ? selectedSupplierHistory.phone : 'غير مسجل'}
-                    </p>
+                  <div className="text-left bg-white px-4 py-2 rounded-xl shadow-xs border border-[#E2E8F0] w-full sm:w-auto print:hidden">
+                    <span className="text-[11px] text-[#64748B] block font-medium">حالة الحساب</span>
+                    <span className="font-bold text-xs">
+                      {Number(statementSummary?.currentBalance ?? activeSupplier?.balance ?? 0) > 0 ? (
+                        <span className="text-[#DC2626]">مطلوب تسديده للمورد (دائن)</span>
+                      ) : Number(statementSummary?.currentBalance ?? activeSupplier?.balance ?? 0) < 0 ? (
+                        <span className="text-[#16A34A]">رصيد لصالح المحل (مدين)</span>
+                      ) : (
+                        <span className="text-slate-500">حساب خالص تماماً</span>
+                      )}
+                    </span>
                   </div>
                 </div>
-                <div className="text-left bg-white px-5 py-3 rounded-xl shadow-sm border border-[#E2E8F0] w-full sm:w-auto print:shadow-none print:px-4">
-                  <p className="text-xs text-[#475569] font-bold mb-1 block">الرصيد المالي الحالي</p>
-                  <p className={`text-2xl font-black ${Number(selectedSupplierHistory.balance || 0) > 0 ? 'text-[#DC2626]' : Number(selectedSupplierHistory.balance || 0) < 0 ? 'text-[#16A34A]' : 'text-[#1E293B]'} print:text-black font-mono`} dir="ltr">
-                    {Math.abs(Number(selectedSupplierHistory.balance || 0)).toLocaleString()} <span className="text-xs text-[#94A3B8] print:text-black">ج.م</span>
-                  </p>
-                  <p className="text-[11px] text-[#64748B] mt-0.5 text-center font-bold print:text-black">
-                    {Number(selectedSupplierHistory.balance || 0) > 0 ? 'مطلوب تسديده للمورد' : Number(selectedSupplierHistory.balance || 0) < 0 ? 'رصيد دائن للمحل' : 'حساب خالص غير مدين'}
-                  </p>
-                </div>
+
+                {/* 4-Metric Accounting Balance Grid */}
+                {statementSummary && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                    <div className="bg-white p-3 rounded-xl border border-[#E2E8F0] shadow-xs text-center print:border-gray-300">
+                      <span className="block text-[11px] font-bold text-[#64748B] mb-0.5">الرصيد الافتتاحي</span>
+                      <span className="text-sm sm:text-base font-black font-mono text-[#334155]" dir="ltr">
+                        {statementSummary.initialBalance.toLocaleString()} <span className="text-[10px] font-normal">ج.م</span>
+                      </span>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-[#E2E8F0] shadow-xs text-center print:border-gray-300">
+                      <span className="block text-[11px] font-bold text-[#64748B] mb-0.5">إجمالي التوريدات (+)</span>
+                      <span className="text-sm sm:text-base font-black font-mono text-[#DC2626]" dir="ltr">
+                        {statementSummary.totalPurchases.toLocaleString()} <span className="text-[10px] font-normal">ج.م</span>
+                      </span>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-[#E2E8F0] shadow-xs text-center print:border-gray-300">
+                      <span className="block text-[11px] font-bold text-[#64748B] mb-0.5">إجمالي المدفوعات (-)</span>
+                      <span className="text-sm sm:text-base font-black font-mono text-[#16A34A]" dir="ltr">
+                        {statementSummary.totalPayments.toLocaleString()} <span className="text-[10px] font-normal">ج.م</span>
+                      </span>
+                    </div>
+                    <div className={`p-3 rounded-xl border shadow-xs text-center print:border-gray-300 ${Number(statementSummary.currentBalance) > 0 ? 'bg-red-50/50 border-red-200' : Number(statementSummary.currentBalance) < 0 ? 'bg-emerald-50/50 border-emerald-200' : 'bg-white border-[#E2E8F0]'}`}>
+                      <span className="block text-[11px] font-bold text-[#64748B] mb-0.5">صافي الرصيد المستحق</span>
+                      <span className={`text-base sm:text-lg font-black font-mono ${Number(statementSummary.currentBalance) > 0 ? 'text-[#DC2626]' : Number(statementSummary.currentBalance) < 0 ? 'text-[#16A34A]' : 'text-[#334155]'}`} dir="ltr">
+                        {Math.abs(statementSummary.currentBalance).toLocaleString()} <span className="text-[10px] font-normal">ج.م</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="overflow-x-auto print:overflow-visible w-full rounded-xl border border-[#E2E8F0] print:border-none">
@@ -851,37 +1005,70 @@ export default function Suppliers() {
                           <td className="px-3.5 py-3 text-xs sm:text-sm text-center text-[#16A34A] font-bold print:text-black font-mono" dir="ltr">
                             {row.debit > 0 ? Number(row.debit || 0).toLocaleString() : '-'}
                           </td>
-                          <td className="px-3.5 py-3 text-xs sm:text-sm text-center font-bold print:text-black font-mono" dir="ltr">
-                            <span className={row.balance > 0 ? 'text-[#DC2626] print:text-black' : row.balance < 0 ? 'text-[#16A34A] print:text-black' : 'text-[#64748B] print:text-black'}>
-                              {Math.abs(Number(row.balance || 0)).toLocaleString()} {row.balance > 0 ? 'دائن' : row.balance < 0 ? 'مدين' : ''}
-                            </span>
+                          <td className="px-3.5 py-3 text-xs sm:text-sm text-center font-bold print:text-black font-mono whitespace-nowrap" dir="ltr">
+                            {Number(row.balance) > 0 ? (
+                              <div className="flex items-center justify-center gap-1.5 flex-nowrap" dir="rtl">
+                                <span className="text-[#DC2626] font-black font-mono" dir="ltr">
+                                  {Number(row.balance).toLocaleString()} ج.م
+                                </span>
+                                <span className="text-[10px] font-bold text-[#DC2626] bg-red-50 border border-red-200 px-1.5 py-0.5 rounded print:border-none">
+                                  دائن للمورد
+                                </span>
+                              </div>
+                            ) : Number(row.balance) < 0 ? (
+                              <div className="flex items-center justify-center gap-1.5 flex-nowrap" dir="rtl">
+                                <span className="text-[#16A34A] font-black font-mono" dir="ltr">
+                                  {Math.abs(Number(row.balance)).toLocaleString()} ج.م
+                                </span>
+                                <span className="text-[10px] font-bold text-[#16A34A] bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded print:border-none">
+                                  مدين للمحل
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center gap-1.5 flex-nowrap" dir="rtl">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-[#F0FDF4] text-[#16A34A] border border-[#BBF7D0] shadow-xs print:border-none">
+                                  0.00 ج.م (خالص ومسوّى)
+                                </span>
+                              </div>
+                            )}
                           </td>
                           <td className="px-3.5 py-3 text-xs sm:text-sm text-center print:hidden">
-                            {row.isPurchase && row.rawPurchase && (
-                              <button 
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  const s = suppliers.find(su => su.id === row.rawPurchase.supplierId);
-                                  if (!s?.phone) {
-                                    alert("المورد ليس لديه رقم هاتف مسجل للمراسلة عبر واتساب.");
-                                    return;
-                                  }
-                                  
-                                  let phone = s.phone;
-                                  if (phone.startsWith('0')) {
-                                    phone = '2' + phone.substring(1);
-                                  } else if (!phone.startsWith('2')) {
-                                    phone = '2' + phone;
-                                  }
-                                  const textMsg = `مرحباً،\nمرفق تفاصيل فاتورة المشتريات رقم: ${row.rawPurchase.id.slice(-6).toUpperCase()}\nبتاريخ: ${new Date(row.rawPurchase.date).toLocaleDateString('ar-EG')}\nالإجمالي: ${Number(row.rawPurchase.total || 0).toLocaleString()} ج.م\nالمدفوع: ${Number(row.rawPurchase.paid || 0).toLocaleString()} ج.م\nالمتبقي: ${Number((row.rawPurchase.total || 0) - (row.rawPurchase.paid || 0)).toLocaleString()} ج.م`;
-                                  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(textMsg)}`, '_blank');
-                                }}
-                                className="inline-block text-[#16A34A] hover:text-[#15803D] transition-colors p-1 cursor-pointer bg-transparent border-none"
-                                title="مشاركة الفاتورة عبر واتساب"
-                              >
-                                <Share2 className="w-4 h-4" />
-                              </button>
-                            )}
+                            <div className="flex items-center justify-center gap-1">
+                              {row.isPurchase && row.rawPurchase && (
+                                <button 
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    const s = suppliers.find(su => su.id === row.rawPurchase.supplierId);
+                                    if (!s?.phone) {
+                                      alert("المورد ليس لديه رقم هاتف مسجل للمراسلة عبر واتساب.");
+                                      return;
+                                    }
+                                    
+                                    let phone = s.phone;
+                                    if (phone.startsWith('0')) {
+                                      phone = '2' + phone.substring(1);
+                                    } else if (!phone.startsWith('2')) {
+                                      phone = '2' + phone;
+                                    }
+                                    const textMsg = `مرحباً،\nمرفق تفاصيل فاتورة المشتريات رقم: ${row.rawPurchase.id.slice(-6).toUpperCase()}\nبتاريخ: ${new Date(row.rawPurchase.date).toLocaleDateString('ar-EG')}\nالإجمالي: ${Number(row.rawPurchase.total || 0).toLocaleString()} ج.م\nالمدفوع: ${Number(row.rawPurchase.paid || 0).toLocaleString()} ج.م\nالمتبقي: ${Number((row.rawPurchase.total || 0) - (row.rawPurchase.paid || 0)).toLocaleString()} ج.م`;
+                                    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(textMsg)}`, '_blank');
+                                  }}
+                                  className="inline-flex items-center justify-center w-7 h-7 text-[#16A34A] hover:bg-emerald-50 rounded-lg transition-colors p-1 cursor-pointer bg-transparent border-none"
+                                  title="مشاركة الفاتورة عبر واتساب"
+                                >
+                                  <Share2 className="w-4 h-4" />
+                                </button>
+                              )}
+                              {!row.isInitial && (
+                                <button
+                                  onClick={() => setTransactionToDelete(row)}
+                                  className="inline-flex items-center justify-center w-7 h-7 text-[#DC2626] hover:bg-red-50 rounded-lg transition-colors p-1 cursor-pointer bg-transparent border-none"
+                                  title="حذف هذه المعاملة / السند"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -925,17 +1112,87 @@ export default function Suppliers() {
                 <label className="text-xs font-bold text-[#475569]">التاريخ</label>
                 <input type="date" value={newSupplier.date} onChange={e => setNewSupplier({...newSupplier, date: e.target.value})} className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2563EB] focus:outline-none" dir="ltr" />
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-[#475569]">الرصيد الافتتاحي (ج.م)</label>
-                <input 
-                  type="number" 
-                  placeholder="0"
-                  value={newSupplier.balance} 
-                  onChange={e => setNewSupplier({...newSupplier, balance: e.target.value === '' ? '' : Number(e.target.value)})} 
-                  className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2563EB] focus:outline-none" 
-                />
-                <p className="text-[10px] text-[#94A3B8]">الموجب يعني أن للمورد مستحقات لديك سابقة.</p>
-              </div>
+              {editingSupplier ? (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#475569]">الرصيد الافتتاحي (أول التعامل - ج.م)</label>
+                    <input 
+                      type="number" 
+                      placeholder="0"
+                      value={newSupplier.initialBalance} 
+                      onChange={e => {
+                        const val = e.target.value === '' ? '' : Number(e.target.value);
+                        const supPurs = purchases.filter(p => p.supplierId === editingSupplier.id);
+                        const netChange = supPurs.reduce((acc, p) => acc + (Number(p.total || 0) - Number(p.paid || 0)), 0);
+                        const newCur = val === '' ? '' : (Number(val) + netChange);
+                        setNewSupplier({
+                          ...newSupplier,
+                          initialBalance: val,
+                          balance: newCur
+                        });
+                      }} 
+                      className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2563EB] focus:outline-none" 
+                    />
+                    <p className="text-[10px] text-[#94A3B8]">المبلغ القديم المستحق للمورد قبل أي حركات مسجلة.</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#2563EB]">أو: الرصيد الحالي المستحق للمورد الآن (ج.م)</label>
+                    <input 
+                      type="number" 
+                      placeholder="0"
+                      value={newSupplier.balance} 
+                      onChange={e => {
+                        const val = e.target.value === '' ? '' : Number(e.target.value);
+                        const supPurs = purchases.filter(p => p.supplierId === editingSupplier.id);
+                        const netChange = supPurs.reduce((acc, p) => acc + (Number(p.total || 0) - Number(p.paid || 0)), 0);
+                        const newInit = val === '' ? '' : (Number(val) - netChange);
+                        setNewSupplier({
+                          ...newSupplier,
+                          balance: val,
+                          initialBalance: newInit
+                        });
+                      }} 
+                      className="w-full border-2 border-blue-200 bg-blue-50/30 rounded-lg px-3 py-2 text-sm font-bold text-[#1E293B] focus:ring-2 focus:ring-[#2563EB] focus:outline-none" 
+                    />
+                    <p className="text-[10px] text-blue-600 font-medium">إذا قمت بكتابة المبلغ المتبقي له حالياً هنا، سيقوم السيستم بحساب وتعديل رصيده تلقائياً.</p>
+                  </div>
+
+                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] p-3 rounded-lg text-xs space-y-1.5">
+                    <div className="flex justify-between text-[#64748B]">
+                      <span>إجمالي المدفوعات المسددة للمورد:</span>
+                      <span className="font-mono font-bold text-[#16A34A]" dir="ltr">
+                        {(() => {
+                          const supPurs = purchases.filter(p => p.supplierId === editingSupplier.id);
+                          const totalPaid = supPurs.reduce((acc, p) => acc + Number(p.paid || 0), 0);
+                          return `${totalPaid.toLocaleString()} ج.م`;
+                        })()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between font-bold text-[#1E293B] pt-1.5 border-t border-[#E2E8F0]">
+                      <span>الرصيد النهائي الناتج:</span>
+                      <span className="font-mono text-sm text-[#DC2626]" dir="ltr">
+                        {(() => {
+                          const cur = Number(newSupplier.balance) || 0;
+                          return `${cur.toLocaleString()} ج.م (${cur > 0 ? 'مستحق للمورد' : cur < 0 ? 'دائن للمحل' : 'خالص'})`;
+                        })()}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-[#475569]">الرصيد الافتتاحي (أول التعامل - ج.م)</label>
+                  <input 
+                    type="number" 
+                    placeholder="0"
+                    value={newSupplier.initialBalance} 
+                    onChange={e => setNewSupplier({...newSupplier, initialBalance: e.target.value === '' ? '' : Number(e.target.value)})} 
+                    className="w-full border border-[#E2E8F0] rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2563EB] focus:outline-none" 
+                  />
+                  <p className="text-[10px] text-[#94A3B8]">المبلغ المستحق للمورد كبداية (الموجب يعني مستحق للمورد، والسالب يعني رصيد لصالح المحل).</p>
+                </div>
+              )}
               <div className="pt-4 flex justify-end gap-3 border-t border-[#E2E8F0] mt-6">
                 <button type="button" onClick={closeSupplierModal} className="px-4 py-2 text-sm font-bold text-[#475569] bg-[#F1F5F9] rounded-lg hover:bg-[#E2E8F0] cursor-pointer">إلغاء</button>
                 <button type="submit" className="px-4 py-2 text-sm font-bold text-white bg-[#2563EB] rounded-lg hover:bg-[#1D4ED8] cursor-pointer">{editingSupplier ? 'تحديث البيانات' : 'حفظ المورد'}</button>
@@ -1323,6 +1580,28 @@ export default function Suppliers() {
         }
         warningNote="تنبيه: سيؤدي الحذف إلى إزالة سجل المورد نهائياً من النظام. لن تتمكن من التراجع عن هذه الخطوة."
         confirmText="نعم، حذف المورد"
+      />
+
+      {/* Transaction Delete Confirmation Modal */}
+      <ConfirmDeleteModal
+        isOpen={!!transactionToDelete}
+        onClose={() => !isDeletingTransaction && setTransactionToDelete(null)}
+        onConfirm={handleConfirmDeleteTransaction}
+        isDeleting={isDeletingTransaction}
+        title="تأكيد حذف الحركة"
+        message="هل أنت متأكد من رغبتك في حذف هذه المعاملة؟ سيتم إعادة احتساب رصيد المورد وتحديث الحسابات تلقائياً."
+        itemName={transactionToDelete?.description}
+        itemDetails={
+          transactionToDelete ? (
+            <div className="flex flex-col gap-1 mt-1 text-xs">
+              <div>التاريخ: {transactionToDelete.date}</div>
+              {transactionToDelete.credit > 0 && <div>قيمة البضاعة: {Number(transactionToDelete.credit).toLocaleString()} ج.م</div>}
+              {transactionToDelete.debit > 0 && <div>المبلغ المسدد: {Number(transactionToDelete.debit).toLocaleString()} ج.م</div>}
+            </div>
+          ) : undefined
+        }
+        warningNote="تنبيه: حذف فاتورة الشراء سيعيد تعديل كميات المخزن ورصيد المورد المستحق فوراً."
+        confirmText="نعم، حذف الحركة"
       />
     </>
   );

@@ -259,6 +259,7 @@ export type Supplier = {
   name: string;
   phone: string;
   balance: number;
+  initialBalance?: number;
   createdAt?: number;
   updatedAt?: number;
 };
@@ -369,6 +370,7 @@ type AppDataContextType = {
   deleteInvoice: (id: string) => Promise<void>;
   
   createPurchase: (purchase: Omit<PurchaseOrder, 'id'>) => Promise<void>;
+  deletePurchase: (id: string) => Promise<void>;
   recordCustomerPayment: (customerId: string, amount: number, paymentDate?: string) => Promise<void>;
   recordSupplierPayment: (supplierId: string, amount: number, paymentDate?: string) => Promise<void>;
   auditAndReconcileBalances: () => Promise<{ updatedCustomers: number; updatedSuppliers: number }>;
@@ -833,9 +835,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     const newRef = doc(collection(db, 'users', uid, 'suppliers'));
     const newId = newRef.id;
 
+    const initialBal = Number(supplier.initialBalance ?? supplier.balance ?? 0);
+    const initialComputedBal = Number(supplier.balance ?? initialBal);
+
     const newSup: Supplier = {
       ...supplier,
       id: newId,
+      initialBalance: initialBal,
+      balance: initialComputedBal,
       createdAt: now,
       updatedAt: now
     };
@@ -847,20 +854,39 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     });
 
     safeFirestoreOperation(async () => {
-      await setDoc(newRef, { ...supplier, ownerId: uid, createdAt: now, updatedAt: now });
+      await setDoc(newRef, { ...newSup, ownerId: uid, createdAt: now, updatedAt: now });
     }, `suppliers/${newId}`);
   }, [uid]);
 
   const updateSupplier = useCallback(async (id: string, supplier: Omit<Supplier, 'id'>) => {
     const now = Date.now();
     setSuppliers(prev => {
-      const updated = prev.map(s => s.id === id ? { ...s, ...supplier, updatedAt: now } : s);
+      const updated = prev.map(s => {
+        if (s.id === id) {
+          const initBal = supplier.initialBalance !== undefined ? Number(supplier.initialBalance) : (s.initialBalance ?? 0);
+          return {
+            ...s,
+            ...supplier,
+            initialBalance: initBal,
+            balance: Number(supplier.balance ?? s.balance),
+            updatedAt: now
+          };
+        }
+        return s;
+      });
       try { localStorage.setItem('doctor_tools_suppliers', JSON.stringify(updated)); } catch {}
       return updated;
     });
 
     safeFirestoreOperation(async () => {
-      await setDoc(doc(db, 'users', uid, 'suppliers', id), { ...supplier, ownerId: uid, updatedAt: now }, { merge: true });
+      const existing = suppliersRef.current.find(s => s.id === id);
+      const initBal = supplier.initialBalance !== undefined ? Number(supplier.initialBalance) : (existing?.initialBalance ?? 0);
+      await setDoc(doc(db, 'users', uid, 'suppliers', id), {
+        ...supplier,
+        initialBalance: initBal,
+        ownerId: uid,
+        updatedAt: now
+      }, { merge: true });
     }, `suppliers/${id}`);
   }, [uid]);
 
@@ -1163,10 +1189,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       
       for (const purItem of purchase.items) {
         const invRef = doc(db, 'users', uid, 'inventory', purItem.itemId);
-        const currentItem = inventory.find(i => i.id === purItem.itemId);
-        if (currentItem) {
-          batch.update(invRef, { quantity: currentItem.quantity + purItem.quantity, purchasePrice: purItem.price, updatedAt: Date.now() });
-        }
+        batch.set(invRef, {
+          quantity: increment(purItem.quantity),
+          purchasePrice: purItem.price,
+          updatedAt: Date.now()
+        }, { merge: true });
       }
 
       if (remaining !== 0) {
@@ -1177,6 +1204,70 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       await batch.commit();
     }, `purchases/${newId}`);
   }, [inventory, uid]);
+
+  const deletePurchase = useCallback(async (id: string) => {
+    const purToDelete = purchasesRef.current.find(p => p.id === id);
+    if (!purToDelete) return;
+
+    setPurchases(prev => {
+      const updated = prev.filter(p => p.id !== id);
+      try { localStorage.setItem('doctor_tools_purchases', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+
+    if (purToDelete.items && purToDelete.items.length > 0) {
+      setInventory(prev => {
+        const updated = prev.map(inv => {
+          const purItem = purToDelete.items.find(it => it.itemId === inv.id);
+          if (purItem) {
+            return { ...inv, quantity: Math.max(0, inv.quantity - purItem.quantity), updatedAt: Date.now() };
+          }
+          return inv;
+        });
+        try { localStorage.setItem('doctor_tools_inventory', JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+    }
+
+    const remaining = purToDelete.total - purToDelete.paid;
+    if (remaining !== 0 && purToDelete.supplierId) {
+      setSuppliers(prev => {
+        const updated = prev.map(s => {
+          if (s.id === purToDelete.supplierId) {
+            return { ...s, balance: (s.balance || 0) - remaining, updatedAt: Date.now() };
+          }
+          return s;
+        });
+        try { localStorage.setItem('doctor_tools_suppliers', JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+    }
+
+    safeFirestoreOperation(async () => {
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'users', uid, 'purchases', id));
+
+      if (purToDelete.items && purToDelete.items.length > 0) {
+        for (const purItem of purToDelete.items) {
+          const currentItem = inventoryRef.current.find(i => i.id === purItem.itemId);
+          if (currentItem) {
+            const invRef = doc(db, 'users', uid, 'inventory', purItem.itemId);
+            batch.update(invRef, {
+              quantity: Math.max(0, currentItem.quantity - purItem.quantity),
+              updatedAt: Date.now()
+            });
+          }
+        }
+      }
+
+      if (remaining !== 0 && purToDelete.supplierId) {
+        const supRef = doc(db, 'users', uid, 'suppliers', purToDelete.supplierId);
+        batch.set(supRef, { balance: increment(-remaining), updatedAt: Date.now() }, { merge: true });
+      }
+
+      await batch.commit();
+    }, `purchases/${id}`, OperationType.DELETE);
+  }, [uid]);
 
   const recordCustomerPayment = useCallback(async (customerId: string, amount: number, paymentDate?: string) => {
     if (amount <= 0) return;
@@ -1360,11 +1451,22 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     currentSups.forEach(s => {
       const sPurs = currentPurs.filter(p => p.supplierId === s.id);
       const purTotal = sPurs.reduce((acc, p) => acc + Number(p.total || 0), 0);
-      const purPaid = sPurs.reduce((acc, p) => acc + Number(p.paid || 0), 0);
-      const accurateSupBalance = purTotal - purPaid;
+      const purPaid = sPurs.reduce((acc, p) => acc + (Number((p as any).paid ?? (p as any).paidAmount ?? 0)), 0);
+      const netTransChange = purTotal - purPaid;
+      
+      const currentStoredBalance = Number(s.balance || 0);
+      let initialOpeningBalance: number;
+      if (s.initialBalance !== undefined && s.initialBalance !== null) {
+        initialOpeningBalance = Number(s.initialBalance);
+      } else {
+        // Fallback: If initialBalance is not explicitly stored, derive it so we never wipe out existing balances
+        initialOpeningBalance = currentStoredBalance - netTransChange;
+      }
+      
+      const accurateSupBalance = initialOpeningBalance + netTransChange;
 
-      if (Number(s.balance || 0) !== accurateSupBalance && sPurs.length > 0) {
-        supplierUpdates.push({ ...s, balance: accurateSupBalance, updatedAt: Date.now() });
+      if (currentStoredBalance !== accurateSupBalance || s.initialBalance === undefined) {
+        supplierUpdates.push({ ...s, initialBalance: initialOpeningBalance, balance: accurateSupBalance, updatedAt: Date.now() });
         updatedSuppliers++;
       }
     });
@@ -1388,8 +1490,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
     if (supplierUpdates.length > 0) {
       setSuppliers(prev => {
-        const updateMap = new Map(supplierUpdates.map(u => [u.id, u.balance]));
-        const updated = prev.map(s => updateMap.has(s.id) ? { ...s, balance: updateMap.get(s.id)!, updatedAt: Date.now() } : s);
+        const updateMap = new Map(supplierUpdates.map(u => [u.id, u]));
+        const updated = prev.map(s => updateMap.has(s.id) ? { ...s, ...updateMap.get(s.id)!, updatedAt: Date.now() } : s);
         try { localStorage.setItem('doctor_tools_suppliers', JSON.stringify(updated)); } catch {}
         return updated;
       });
@@ -1397,7 +1499,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       safeFirestoreOperation(async () => {
         const batch = writeBatch(db);
         supplierUpdates.forEach(u => {
-          batch.set(doc(db, 'users', uid, 'suppliers', u.id), { balance: u.balance, updatedAt: Date.now() }, { merge: true });
+          batch.set(doc(db, 'users', uid, 'suppliers', u.id), {
+            balance: u.balance,
+            initialBalance: u.initialBalance ?? 0,
+            updatedAt: Date.now()
+          }, { merge: true });
         });
         await batch.commit();
       }, 'suppliers/batchReconcile');
@@ -1664,6 +1770,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     updateInvoice,
     deleteInvoice,
     createPurchase,
+    deletePurchase,
     recordCustomerPayment,
     recordSupplierPayment,
     auditAndReconcileBalances,
@@ -1701,6 +1808,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     updateInvoice,
     deleteInvoice,
     createPurchase,
+    deletePurchase,
     recordCustomerPayment,
     recordSupplierPayment,
     auditAndReconcileBalances,
