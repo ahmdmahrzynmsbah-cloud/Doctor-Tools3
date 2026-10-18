@@ -51,7 +51,6 @@ export default function SystemUpdateModal() {
               <Sparkles className="w-3.5 h-3.5" />
               تحديث المحرك الأضخم v3.8 (فائق السرعة)
             </span>
-            <span className="text-[11px] text-slate-400 font-mono">يختفي خلال 3 ثوانٍ</span>
           </div>
 
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
