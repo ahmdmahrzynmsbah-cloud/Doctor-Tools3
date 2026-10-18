@@ -68,8 +68,8 @@ export default function SystemUpdateModal() {
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-emerald-900">حساب المورد: نبيل حمدان</h4>
-              <p className="text-[11px] text-emerald-700">تم ضبط الرصيد المستحق بدقة فائقة: 408.00 جنيه</p>
+              <h4 className="text-xs font-bold text-emerald-900">سداد ومزامنة حسابات الموردين</h4>
+              <p className="text-[11px] text-emerald-700">تم تثبيت حفظ الدفعات ومطابقة الأرصدة فورياً وبشكل دائم دون تراجع</p>
             </div>
           </div>
 
