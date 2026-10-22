@@ -43,12 +43,12 @@ export default function Customers() {
       
       const storedBalance = Number(c.balance || 0);
       const netTransChange = salesTotal - totalPaid;
-      const initialOpeningBalance = storedBalance - netTransChange;
+      const initialOpeningBalance = (c.initialBalance !== undefined && c.initialBalance !== null)
+        ? Number(c.initialBalance)
+        : (cInvoices.length === 0 ? storedBalance : 0);
+      const accurateDebt = (storedBalance === 0 && netTransChange > 0) ? netTransChange : (initialOpeningBalance + netTransChange);
       const grandTotalTransactions = initialOpeningBalance > 0 ? (salesTotal + initialOpeningBalance) : salesTotal;
       
-      // Exact remaining debt: if stored balance is 0 but there are unpaid sales invoices, ensure true net debt is used
-      const accurateDebt = (storedBalance === 0 && netTransChange > 0) ? netTransChange : storedBalance;
-
       map.set(c.id, {
         totalInvoices: grandTotalTransactions,
         totalPaid: totalPaid,
@@ -438,7 +438,7 @@ export default function Customers() {
                   remainingDebt: Number(customer.balance || 0),
                   invoiceCount: 0
                 };
-                const currentBalance = Number(customer.balance ?? stats.remainingDebt ?? 0);
+                const currentBalance = Number(stats.remainingDebt !== undefined ? stats.remainingDebt : (customer.balance || 0));
 
                 return (
                   <div 
@@ -588,7 +588,7 @@ export default function Customers() {
                       remainingDebt: Number(customer.balance || 0),
                       invoiceCount: 0
                     };
-                    const currentBalance = Number(customer.balance ?? stats.remainingDebt ?? 0);
+                    const currentBalance = Number(stats.remainingDebt !== undefined ? stats.remainingDebt : (customer.balance || 0));
 
                     return (
                       <tr 

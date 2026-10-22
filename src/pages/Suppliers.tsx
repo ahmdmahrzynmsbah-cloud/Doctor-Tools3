@@ -43,6 +43,22 @@ export default function Suppliers() {
     return purchases.filter(p => p.supplierId === supplierId);
   };
 
+  const supplierFinancials = useMemo(() => {
+    const map = new Map<string, { totalPurchases: number; totalPaid: number; balance: number }>();
+    suppliers.forEach(s => {
+      const sPurs = purchases.filter(p => p.supplierId === s.id);
+      const totalPurchases = sPurs.reduce((acc, p) => acc + Number(p.total || 0), 0);
+      const totalPaid = sPurs.reduce((acc, p) => acc + Number((p as any).paid ?? (p as any).paidAmount ?? 0), 0);
+      const netChange = totalPurchases - totalPaid;
+      const initialBal = (s.initialBalance !== undefined && s.initialBalance !== null)
+        ? Number(s.initialBalance)
+        : (sPurs.length === 0 ? Number(s.balance || 0) : 0);
+      const accurateBal = initialBal + netChange;
+      map.set(s.id, { totalPurchases, totalPaid, balance: accurateBal });
+    });
+    return map;
+  }, [suppliers, purchases]);
+
   const activeSupplier = useMemo(() => {
     if (!selectedSupplierHistory) return null;
     return suppliers.find(s => s.id === selectedSupplierHistory.id) || selectedSupplierHistory;
@@ -54,9 +70,9 @@ export default function Suppliers() {
     const totalPurchases = transactions.reduce((acc, p) => acc + Number(p.total || 0), 0);
     const totalPayments = transactions.reduce((acc, p) => acc + Number((p as any).paid ?? (p as any).paidAmount ?? 0), 0);
     const netChange = totalPurchases - totalPayments;
-    const initialBalance = activeSupplier.initialBalance !== undefined
+    const initialBalance = (activeSupplier.initialBalance !== undefined && activeSupplier.initialBalance !== null)
       ? Number(activeSupplier.initialBalance)
-      : (Number(activeSupplier.balance || 0) - netChange);
+      : (transactions.length === 0 ? Number(activeSupplier.balance || 0) : 0);
     const currentBalance = initialBalance + netChange;
 
     return {
@@ -75,9 +91,9 @@ export default function Suppliers() {
     );
 
     let netChange = transactions.reduce((acc, inv) => acc + (Number(inv.total || 0) - Number((inv as any).paid ?? (inv as any).paidAmount ?? 0)), 0);
-    const initialBalance = activeSupplier.initialBalance !== undefined
+    const initialBalance = (activeSupplier.initialBalance !== undefined && activeSupplier.initialBalance !== null)
       ? Number(activeSupplier.initialBalance)
-      : (Number(activeSupplier.balance || 0) - netChange);
+      : (transactions.length === 0 ? Number(activeSupplier.balance || 0) : 0);
 
     let currentBalance = initialBalance;
     const entries = [];
@@ -690,14 +706,21 @@ export default function Suppliers() {
 
                   <div className="text-left">
                     <span className="block text-[10px] text-slate-500 font-medium">الرصيد المستحق</span>
-                    <span className={`font-black text-base font-mono ${Number(supplier.balance || 0) > 0 ? 'text-[#DC2626]' : Number(supplier.balance || 0) < 0 ? 'text-[#16A34A]' : 'text-[#1E293B]'}`}>
-                      {Math.abs(Number(supplier.balance || 0)).toLocaleString()} <span className="text-[11px] font-normal">ج.م</span>
-                    </span>
-                    <div className="mt-0.5">
-                      {Number(supplier.balance || 0) > 0 && <span className="text-[10px] font-bold text-[#DC2626] bg-red-50 px-1.5 py-0.5 rounded">مطلوب للمورد</span>}
-                      {Number(supplier.balance || 0) < 0 && <span className="text-[10px] font-bold text-[#16A34A] bg-emerald-50 px-1.5 py-0.5 rounded">دائن للمحل</span>}
-                      {Number(supplier.balance || 0) === 0 && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">خالص</span>}
-                    </div>
+                    {(() => {
+                      const supBal = supplierFinancials.get(supplier.id)?.balance !== undefined ? supplierFinancials.get(supplier.id)!.balance : Number(supplier.balance || 0);
+                      return (
+                        <>
+                          <span className={`font-black text-base font-mono ${supBal > 0 ? 'text-[#DC2626]' : supBal < 0 ? 'text-[#16A34A]' : 'text-[#1E293B]'}`}>
+                            {Math.abs(supBal).toLocaleString()} <span className="text-[11px] font-normal">ج.م</span>
+                          </span>
+                          <div className="mt-0.5">
+                            {supBal > 0 && <span className="text-[10px] font-bold text-[#DC2626] bg-red-50 px-1.5 py-0.5 rounded">مطلوب للمورد</span>}
+                            {supBal < 0 && <span className="text-[10px] font-bold text-[#16A34A] bg-emerald-50 px-1.5 py-0.5 rounded">دائن للمحل</span>}
+                            {supBal === 0 && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">خالص</span>}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -793,14 +816,26 @@ export default function Suppliers() {
                     </td>
                     <td className="px-6 py-4 font-mono text-[#475569]">{supplier.phone}</td>
                     <td className="px-6 py-4 font-bold" dir="ltr">
-                      <span className={Number(supplier.balance || 0) > 0 ? 'text-[#DC2626]' : Number(supplier.balance || 0) < 0 ? 'text-[#16A34A]' : 'text-[#1E293B]'}>
-                        {Math.abs(Number(supplier.balance || 0)).toLocaleString()}
-                      </span>
+                      {(() => {
+                        const supBal = supplierFinancials.get(supplier.id)?.balance !== undefined ? supplierFinancials.get(supplier.id)!.balance : Number(supplier.balance || 0);
+                        return (
+                          <span className={supBal > 0 ? 'text-[#DC2626]' : supBal < 0 ? 'text-[#16A34A]' : 'text-[#1E293B]'}>
+                            {Math.abs(supBal).toLocaleString()}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-6 py-4">
-                      {Number(supplier.balance || 0) > 0 && <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#FEF2F2] text-[#DC2626] whitespace-nowrap">مطلوب تسديده للمورد</span>}
-                      {Number(supplier.balance || 0) < 0 && <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#F0FDF4] text-[#16A34A] whitespace-nowrap">الورشة دائنة للمورد</span>}
-                      {Number(supplier.balance || 0) === 0 && <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#F8FAFC] text-[#475569] border border-[#E2E8F0] whitespace-nowrap">خالص</span>}
+                      {(() => {
+                        const supBal = supplierFinancials.get(supplier.id)?.balance !== undefined ? supplierFinancials.get(supplier.id)!.balance : Number(supplier.balance || 0);
+                        return (
+                          <>
+                            {supBal > 0 && <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#FEF2F2] text-[#DC2626] whitespace-nowrap">مطلوب تسديده للمورد</span>}
+                            {supBal < 0 && <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#F0FDF4] text-[#16A34A] whitespace-nowrap">الورشة دائنة للمورد</span>}
+                            {supBal === 0 && <span className="px-2 py-1 rounded-md text-[11px] font-bold bg-[#F8FAFC] text-[#475569] border border-[#E2E8F0] whitespace-nowrap">خالص</span>}
+                          </>
+                        );
+                      })()}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-2">

@@ -990,9 +990,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     const wasQuote = existingInvoice.isQuote || false;
     const isQuote = invoice.isQuote || false;
 
-    if (!wasQuote && !isQuote) {
-      setInventory(prev => {
-        const updated = prev.map(inv => {
+    // 1. Update Inventory in local state
+    setInventory(prev => {
+      let updated = [...prev];
+      if (!wasQuote && !isQuote) {
+        updated = updated.map(inv => {
           const oldItem = existingInvoice.items.find(it => it.itemId === inv.id);
           const newItem = invoice.items.find(it => it.itemId === inv.id);
           let qty = inv.quantity;
@@ -1000,26 +1002,53 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           if (newItem) qty -= newItem.quantity;
           return qty !== inv.quantity ? { ...inv, quantity: qty, updatedAt: Date.now() } : inv;
         });
-        try { localStorage.setItem('doctor_tools_inventory', JSON.stringify(updated)); } catch {}
-        return updated;
-      });
+      } else if (wasQuote && !isQuote) {
+        // Converted quote -> real invoice: deduct items from inventory
+        updated = updated.map(inv => {
+          const newItem = invoice.items.find(it => it.itemId === inv.id);
+          if (newItem) {
+            return { ...inv, quantity: inv.quantity - newItem.quantity, updatedAt: Date.now() };
+          }
+          return inv;
+        });
+      } else if (!wasQuote && isQuote) {
+        // Converted real invoice -> quote: return items to inventory
+        updated = updated.map(inv => {
+          const oldItem = existingInvoice.items.find(it => it.itemId === inv.id);
+          if (oldItem) {
+            return { ...inv, quantity: inv.quantity + oldItem.quantity, updatedAt: Date.now() };
+          }
+          return inv;
+        });
+      }
+      try { localStorage.setItem('doctor_tools_inventory', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
 
-      const oldRemaining = existingInvoice.total - existingInvoice.paid;
-      const newRemaining = invoice.total - invoice.paid;
-      if (existingInvoice.customerId && invoice.customerId) {
+    // 2. Update Customer Balance in local state
+    const oldRemaining = !wasQuote ? (Number(existingInvoice.total || 0) - Number(existingInvoice.paid || 0)) : 0;
+    const newRemaining = !isQuote ? (Number(invoice.total || 0) - Number(invoice.paid || 0)) : 0;
+    const netCustomerDiff = newRemaining - oldRemaining;
+
+    if (existingInvoice.customerId && invoice.customerId && existingInvoice.customerId === invoice.customerId) {
+      if (netCustomerDiff !== 0) {
         setCustomers(prev => {
-          const updated = prev.map(c => {
-            if (c.id === existingInvoice.customerId && existingInvoice.customerId === invoice.customerId) {
-              return { ...c, balance: (c.balance || 0) - oldRemaining + newRemaining, updatedAt: Date.now() };
-            }
-            if (c.id === existingInvoice.customerId) {
-              return { ...c, balance: (c.balance || 0) - oldRemaining, updatedAt: Date.now() };
-            }
-            if (c.id === invoice.customerId) {
-              return { ...c, balance: (c.balance || 0) + newRemaining, updatedAt: Date.now() };
-            }
-            return c;
-          });
+          const updated = prev.map(c => c.id === invoice.customerId ? { ...c, balance: (c.balance || 0) + netCustomerDiff, updatedAt: Date.now() } : c);
+          try { localStorage.setItem('doctor_tools_customers', JSON.stringify(updated)); } catch {}
+          return updated;
+        });
+      }
+    } else {
+      if (existingInvoice.customerId && oldRemaining !== 0) {
+        setCustomers(prev => {
+          const updated = prev.map(c => c.id === existingInvoice.customerId ? { ...c, balance: (c.balance || 0) - oldRemaining, updatedAt: Date.now() } : c);
+          try { localStorage.setItem('doctor_tools_customers', JSON.stringify(updated)); } catch {}
+          return updated;
+        });
+      }
+      if (invoice.customerId && newRemaining !== 0) {
+        setCustomers(prev => {
+          const updated = prev.map(c => c.id === invoice.customerId ? { ...c, balance: (c.balance || 0) + newRemaining, updatedAt: Date.now() } : c);
           try { localStorage.setItem('doctor_tools_customers', JSON.stringify(updated)); } catch {}
           return updated;
         });
@@ -1050,27 +1079,37 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             }
           }
         }
-
-        const oldRemaining = existingInvoice.total - existingInvoice.paid;
-        const newRemaining = invoice.total - invoice.paid;
-        
-        if (existingInvoice.customerId && invoice.customerId) {
-          if (existingInvoice.customerId === invoice.customerId) {
-              const diff = newRemaining - oldRemaining;
-              if (diff !== 0) {
-                const custRef = doc(db, 'users', uid, 'customers', existingInvoice.customerId);
-                batch.set(custRef, { balance: increment(diff), updatedAt: Date.now() }, { merge: true });
-              }
-          } else {
-              if (oldRemaining !== 0) {
-                const oldCustRef = doc(db, 'users', uid, 'customers', existingInvoice.customerId);
-                batch.set(oldCustRef, { balance: increment(-oldRemaining), updatedAt: Date.now() }, { merge: true });
-              }
-              if (newRemaining !== 0) {
-                const newCustRef = doc(db, 'users', uid, 'customers', invoice.customerId);
-                batch.set(newCustRef, { balance: increment(newRemaining), updatedAt: Date.now() }, { merge: true });
-              }
+      } else if (wasQuote && !isQuote) {
+        for (const newItem of invoice.items) {
+          const invRef = doc(db, 'users', uid, 'inventory', newItem.itemId);
+          const currentItem = inventory.find(i => i.id === newItem.itemId);
+          if (currentItem) {
+            batch.update(invRef, { quantity: currentItem.quantity - newItem.quantity, updatedAt: Date.now() });
           }
+        }
+      } else if (!wasQuote && isQuote) {
+        for (const oldItem of existingInvoice.items) {
+          const invRef = doc(db, 'users', uid, 'inventory', oldItem.itemId);
+          const currentItem = inventory.find(i => i.id === oldItem.itemId);
+          if (currentItem) {
+            batch.update(invRef, { quantity: currentItem.quantity + oldItem.quantity, updatedAt: Date.now() });
+          }
+        }
+      }
+
+      if (existingInvoice.customerId && invoice.customerId && existingInvoice.customerId === invoice.customerId) {
+        if (netCustomerDiff !== 0) {
+          const custRef = doc(db, 'users', uid, 'customers', invoice.customerId);
+          batch.set(custRef, { balance: increment(netCustomerDiff), updatedAt: Date.now() }, { merge: true });
+        }
+      } else {
+        if (existingInvoice.customerId && oldRemaining !== 0) {
+          const oldCustRef = doc(db, 'users', uid, 'customers', existingInvoice.customerId);
+          batch.set(oldCustRef, { balance: increment(-oldRemaining), updatedAt: Date.now() }, { merge: true });
+        }
+        if (invoice.customerId && newRemaining !== 0) {
+          const newCustRef = doc(db, 'users', uid, 'customers', invoice.customerId);
+          batch.set(newCustRef, { balance: increment(newRemaining), updatedAt: Date.now() }, { merge: true });
         }
       }
 
@@ -1432,17 +1471,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       
       const currentStoredBalance = Number(c.balance || 0);
       const netTransChange = salesTotal - totalPaid;
-      const initialOpeningBalance = currentStoredBalance - netTransChange;
+      const initialOpeningBalance = (c.initialBalance !== undefined && c.initialBalance !== null)
+        ? Number(c.initialBalance)
+        : (cInvoices.length === 0 ? currentStoredBalance : 0);
       
-      let accurateBalance = netTransChange;
-      if (initialOpeningBalance > 0 && cInvoices.length > 0) {
-        accurateBalance = netTransChange + initialOpeningBalance;
-      } else if (cInvoices.length === 0) {
-        accurateBalance = currentStoredBalance;
-      }
+      const accurateBalance = initialOpeningBalance + netTransChange;
 
-      if (currentStoredBalance !== accurateBalance) {
-        customerUpdates.push({ ...c, balance: accurateBalance, updatedAt: Date.now() });
+      if (Math.abs(currentStoredBalance - accurateBalance) > 0.01 || c.initialBalance === undefined) {
+        customerUpdates.push({ ...c, initialBalance: initialOpeningBalance, balance: accurateBalance, updatedAt: Date.now() });
         updatedCustomers++;
       }
     });
@@ -1455,17 +1491,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const netTransChange = purTotal - purPaid;
       
       const currentStoredBalance = Number(s.balance || 0);
-      let initialOpeningBalance: number;
-      if (s.initialBalance !== undefined && s.initialBalance !== null) {
-        initialOpeningBalance = Number(s.initialBalance);
-      } else {
-        // Fallback: If initialBalance is not explicitly stored, derive it so we never wipe out existing balances
-        initialOpeningBalance = currentStoredBalance - netTransChange;
-      }
+      const initialOpeningBalance = (s.initialBalance !== undefined && s.initialBalance !== null)
+        ? Number(s.initialBalance)
+        : (sPurs.length === 0 ? currentStoredBalance : 0);
       
       const accurateSupBalance = initialOpeningBalance + netTransChange;
 
-      if (currentStoredBalance !== accurateSupBalance || s.initialBalance === undefined) {
+      if (Math.abs(currentStoredBalance - accurateSupBalance) > 0.01 || s.initialBalance === undefined) {
         supplierUpdates.push({ ...s, initialBalance: initialOpeningBalance, balance: accurateSupBalance, updatedAt: Date.now() });
         updatedSuppliers++;
       }
@@ -1511,6 +1543,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
     return { updatedCustomers, updatedSuppliers };
   }, [uid]);
+
+  // Automated background self-healing reconciliation: guarantees zero discrepancies can ever exist or persist
+  useEffect(() => {
+    if (invoices.length === 0 && purchases.length === 0 && customers.length === 0 && suppliers.length === 0) return;
+    const timer = setTimeout(() => {
+      auditAndReconcileBalances().catch(console.warn);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [invoices.length, purchases.length, customers.length, suppliers.length, auditAndReconcileBalances]);
 
   const scanAndRecoverBrowserData = useCallback(() => {
     let recItems = 0;

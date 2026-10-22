@@ -36,7 +36,14 @@ export default function Dashboard() {
     
     let totalCustomerDebt = 0;
     for (let i = 0; i < customers.length; i++) {
-      totalCustomerDebt += Math.max(0, customers[i].balance || 0);
+      const c = customers[i];
+      const cInvs = invoices.filter(inv => inv.customerId === c.id && !inv.isQuote);
+      const salesTotal = cInvs.filter(inv => !inv.invoiceNumber?.startsWith('PAY-') && ((inv.items && inv.items.length > 0) || Number(inv.total || 0) > 0)).reduce((sum, inv) => sum + Number(inv.total || 0), 0);
+      const totalPaid = cInvs.reduce((sum, inv) => sum + Number(inv.paid || 0), 0);
+      const netTrans = salesTotal - totalPaid;
+      const initBal = (c.initialBalance !== undefined && c.initialBalance !== null) ? Number(c.initialBalance) : (cInvs.length === 0 ? Number(c.balance || 0) : 0);
+      const accurateDebt = (Number(c.balance || 0) === 0 && netTrans > 0) ? netTrans : (initBal + netTrans);
+      totalCustomerDebt += Math.max(0, accurateDebt);
     }
 
     let lowStock = 0;
